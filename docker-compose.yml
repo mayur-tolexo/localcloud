@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  localcloud:
+    build: ./go-backend
+    container_name: localcloud
+    restart: always
+    ports:
+      - "8080:8080"         # Go API
+    environment:
+      - DATA_DIR=/data
+      - AI_SERVICE_URL=http://ai-service:5000
+      - QDRANT_URL=http://qdrant:6333
+      - PI_IP=${PI_IP}      # set PI_IP in .env to your Pi LAN IP or hostname
+    volumes:
+      - /data:/data
+    depends_on:
+      - ai-service
+      - qdrant
+      - gerbera
+
+  ai-service:
+    build: ./python-ai
+    container_name: ai-service
+    restart: on-failure
+    ports:
+      - "5000:5000"         # AI microservice
+    environment:
+      - DATA_DIR=/data
+      - QDRANT_URL=http://qdrant:6333
+      - CLOUD_API_KEY=${CLOUD_API_KEY}  # optional: put your cloud key into .env
+    volumes:
+      - /data:/data
+    depends_on:
+      - qdrant
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: always
+    ports:
+      - "6333:6333"         # Qdrant API
+    volumes:
+      - /data/qdrant:/qdrant/storage
+
+  gerbera:
+    image: gerbera/gerbera:latest
+    container_name: gerbera
+    restart: always
+    # DLNA/UPnP commonly uses dynamic ports; expose common ports for discovery + HTTP streaming
+    ports:
+      - "49152:49152/tcp"
+      - "49153:49153/udp"
+      - "49154:49154/udp"
+    volumes:
+      - /data:/media:ro     # mount media read-only for safety
+      - ./gerbera/config:/config:rw
+    environment:
+      - GERBERA_UID=1000
+      - GERBERA_GID=1000
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f gerbera || true"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Optional: you can add named volumes here, but we bind-mount /data for media persistence.
+volumes:
+  # qdrant_storage: {}
+  # gerbera_config: {}
