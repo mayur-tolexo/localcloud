@@ -1,0 +1,87 @@
+# ─────────────────────────────
+# Go build artifacts
+# ─────────────────────────────
+bin/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# ─────────────────────────────
+# Go vendor & cache
+# ─────────────────────────────
+vendor/
+*.log
+*.tmp
+*.cache
+*.swp
+*.bak
+
+# ─────────────────────────────
+# OS files
+# ─────────────────────────────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+._*
+
+# ─────────────────────────────
+# Environment & secrets
+# ─────────────────────────────
+.env
+.env.*
+config.yaml
+*.pem
+*.key
+*.crt
+
+# ─────────────────────────────
+# Databases
+# ─────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ─────────────────────────────
+# Docker
+# ─────────────────────────────
+docker-compose.override.yml
+.docker/
+docker-data/
+docker-volumes/
+qdrant_storage/
+gerbera_config/
+gerbera_cache/
+
+# ─────────────────────────────
+# Python (for AI indexer service)
+# ─────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# ─────────────────────────────
+# Node / Mobile frontend (if added later)
+# ─────────────────────────────
+node_modules/
+dist/
+build/
+*.tgz
+
+# ─────────────────────────────
+# IDEs & editors
+# ─────────────────────────────
+.vscode/
+.idea/
+*.iml
+
+# ────────────────
