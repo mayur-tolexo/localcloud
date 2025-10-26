@@ -53,25 +53,71 @@ flowchart LR
 
 ## ⚙️ Setup Instructions
 
-### 1. Clone the Repository
+### 1. Mount External SSD Partition
+
+#### Identify the partition
+Plug in your SSD and run:
+```bash
+lsblk
+```
+Example output:
+```
+NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
+sda           8:0    0  500G  0 disk 
+├─sda1        8:1    0  300G  0 part 
+├─sda2        8:2    0  200G  0 part 
+```
+Here, `sda1` will be used for LocalCloud media, and `sda2` can be kept for personal files.
+
+#### Create a mount point
+```bash
+sudo mkdir -p /data
+sudo chown $USER:$USER /data
+```
+
+#### Mount the partition
+```bash
+sudo mount /dev/sda1 /data
+```
+> Replace `/dev/sda1` with the correct partition ID from `lsblk`.
+
+#### Make it persistent on reboot
+Edit `/etc/fstab`:
+```bash
+sudo nano /etc/fstab
+```
+Add the following line:
+```
+/dev/sda1  /data  ext4  defaults  0  2
+```
+> Replace `ext4` with your partition filesystem (use `blkid` to check if unsure).
+
+Save and exit (`Ctrl+O`, `Ctrl+X`). Test the mount:
+```bash
+sudo mount -a
+df -h | grep /data
+```
+If `/data` shows your SSD partition, it’s ready for LocalCloud to use.
+
+### 2. Clone the Repository
 ```bash
 git clone git@github.com:mayur-tolexo/localcloud.git
 cd localcloud
 ```
 
-### 2. Configure Environment
+### 3. Configure Environment
 Create a `.env` file:
 ```bash
 PI_IP=192.168.1.42
 CLOUD_API_KEY=your_cloud_api_key_here
 ```
 
-### 3. Start Services
+### 4. Start Services
 ```bash
 docker compose up -d --build
 ```
 
-### 4. Verify Running Containers
+### 5. Verify Running Containers
 ```bash
 docker ps
 ```
