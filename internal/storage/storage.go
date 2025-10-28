@@ -8,8 +8,7 @@ import (
 
 // SaveFile writes the provided reader to destDir/filename
 func SaveFile(destDir, filename string, r io.Reader) (string, error) {
-	// Prevent path traversal by using base name
-	filename = filepath.Base(filename)
+	filename = filepath.Base(filename) // prevent path traversal
 	outPath := filepath.Join(destDir, filename)
 
 	// ensure destDir exists
