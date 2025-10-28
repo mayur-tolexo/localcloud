@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>LocalCloud — Drive</title>
+<meta name="color-scheme" content="light dark">
+<style>
+  :root{
+    --bg:#f7f7fb; --card:#fff; --muted:#6b7280; --accent:#2563eb;
+    --gap:12px; --radius:10px; --shadow: 0 6px 18px rgba(2,6,23,0.06);
+    --tap:44px;
+  }
+  /* Basic layout */
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial; background:var(--bg); color:#071031; -webkit-font-smoothing:antialiased}
+  .app{display:flex;flex-direction:column;min-height:100vh}
+
+  /* Top bar */
+  .top{
+    display:flex;align-items:center;gap:12px;padding:12px;
+    background:linear-gradient(90deg,#0f172a,#0b1220);color:#fff;flex-wrap:wrap;
+  }
+  .brand{font-weight:700;font-size:18px}
+  .searchbar{display:flex;align-items:center;gap:8px;flex:1;min-width:180px}
+  .searchbar input{
+    flex:1;padding:10px 12px;border-radius:10px;border:0;min-height:var(--tap);font-size:15px;
+  }
+  .searchbar button{padding:10px 12px;border-radius:10px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+  .controls{display:flex;gap:8px;align-items:center}
+  .icon-btn{background:#fff;border-radius:10px;padding:8px 10px;border:0;cursor:pointer;min-height:var(--tap)}
+  .icon-btn[aria-pressed="true"]{box-shadow:inset 0 0 0 2px rgba(37,99,235,0.15)}
+  .small-muted{color:rgba(255,255,255,0.85);font-size:13px}
+
+  /* Main area */
+  .main{display:flex;flex:1;padding:16px;gap:16px;box-sizing:border-box}
+  /* left panel reserved for folder tree on wide screens */
+  .left{display:none}
+  .center{flex:1;display:flex;flex-direction:column;gap:12px}
+
+  /* Breadcrumbs */
+  .breadcrumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .crumb{background:var(--card);border-radius:8px;padding:6px 8px;border:0;cursor:pointer;font-size:13px;box-shadow:var(--shadow)}
+  .crumb:focus{outline:3px solid rgba(37,99,235,0.14)}
+
+  /* folders */
+  .folders{display:flex;gap:10px;overflow:auto;padding-bottom:6px}
+  .folder-tile{min-width:120px;padding:10px;background:var(--card);border-radius:10px;box-shadow:var(--shadow);cursor:pointer;flex-shrink:0}
+
+  /* toolbar */
+  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between}
+  .toolbar .left{display:flex;gap:8px;align-items:center}
+
+  /* grid / list */
+  .content{display:block}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+  .card{background:var(--card);border-radius:10px;overflow:hidden;cursor:pointer;box-shadow:var(--shadow);display:flex;flex-direction:column}
+  .thumb{width:100%;height:140px;object-fit:cover;background:#eee}
+  .meta{padding:10px;font-size:13px}
+  .muted{color:var(--muted);font-size:12px}
+
+  .list{display:flex;flex-direction:column;gap:8px}
+  .list-item{display:flex;gap:12px;align-items:center;padding:10px;background:var(--card);border-radius:10px;box-shadow:var(--shadow);cursor:pointer}
+  .list-thumb{width:120px;height:72px;object-fit:cover;border-radius:8px;flex-shrink:0}
+
+  /* footer / load more */
+  .load-more{display:flex;align-items:center;justify-content:center;padding:12px}
+
+  /* modal viewer */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;visibility:hidden;opacity:0;transition:opacity .12s}
+  .modal.show{visibility:visible;opacity:1}
+  .viewer{background:#000;max-width:95vw;max-height:95vh;padding:12px;border-radius:10px;display:flex;flex-direction:column;align-items:center}
+  .viewer img,.viewer video{max-width:100%;max-height:80vh;border-radius:6px}
+
+  /* responsive adjustments */
+  @media(min-width:900px){
+    .main{padding:24px}
+    .left{display:block;width:260px}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+    .thumb{height:160px}
+  }
+  @media(max-width:480px){
+    .grid{grid-template-columns:repeat(2,1fr)}
+    .thumb{height:120px}
+    .list-thumb{width:96px;height:64px}
+    .searchbar input{font-size:14px}
+    .brand{font-size:16px}
+    .top{padding:10px}
+  }
+
+  /* focus and keyboard */
+  .icon-btn:focus, .folder-tile:focus, .card:focus, .list-item:focus, .crumb:focus {outline:3px solid rgba(37,99,235,0.12)}
+</style>
+</head>
+<body>
+  <div class="app" role="application" aria-label="LocalCloud">
+    <header class="top" role="banner">
+      <div class="brand">LocalCloud</div>
+
+      <div class="searchbar" role="search">
+        <input id="searchInput" aria-label="Search files" placeholder="Search name / date / camera (checkbox for regex)"/>
+        <button id="searchBtn" class="icon-btn" aria-label="Search">Search</button>
+        <label style="display:flex;align-items:center;gap:6px;color:#e6eefb;margin-left:6px">
+          <input id="regexChk" type="checkbox" aria-label="Regex search"/> <span style="color:#e6eefb;font-size:13px;margin-left:4px">regex</span>
+        </label>
+      </div>
+
+      <div class="controls" role="toolbar" aria-label="Controls">
+        <button id="refreshBtn" class="icon-btn" title="Refresh" aria-label="Refresh">⟳</button>
+        <button id="toggleViewBtn" class="icon-btn" title="Toggle view" aria-pressed="false">▦</button>
+        <button id="uploadBtn" class="icon-btn" title="Upload" aria-label="Upload">⬆</button>
+        <button id="backBtn" class="icon-btn" title="Back" aria-label="Back">←</button>
+      </div>
+    </header>
+
+    <main class="main" role="main">
+      <aside class="left" id="leftPanel" aria-hidden="true">
+        <!-- reserved: folder tree, filters -->
+      </aside>
+
+      <section class="center" aria-live="polite">
+        <div class="breadcrumb" id="breadcrumbContainer" aria-label="Breadcrumb"></div>
+
+        <div class="folders" id="foldersContainer" aria-label="Folders"></div>
+
+        <div class="toolbar">
+          <div class="left">
+            <div class="muted" id="resultCount">Loading…</div>
+          </div>
+          <div class="right" style="display:flex;gap:8px">
+            <button id="selectAllBtn" class="icon-btn" title="Select all">☑</button>
+            <button id="moreBtn" class="icon-btn" title="More">⋯</button>
+          </div>
+        </div>
+
+        <div id="contentArea" class="content" aria-live="polite">
+          <div id="gridView" class="grid" role="list"></div>
+          <div id="listView" class="list" style="display:none" role="list"></div>
+        </div>
+
+        <div class="load-more">
+          <button id="loadMoreBtn" class="icon-btn">Load more</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal viewer -->
+    <div id="modal" class="modal" role="dialog" aria-hidden="true" aria-label="Viewer" onclick="closeModal()">
+      <div class="viewer" onclick="event.stopPropagation()">
+        <div id="mediaArea"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+          <button id="prevBtn" class="icon-btn" aria-label="Previous">←</button>
+          <button id="nextBtn" class="icon-btn" aria-label="Next">→</button>
+          <a id="downloadBtn" class="icon-btn" href="#" target="_blank" aria-label="Download">⤓</a>
+          <pre id="metaBox" class="muted" style="margin:0 0 0 8px;white-space:pre-wrap"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ====== Robust Drive UI (mobile + desktop) ====== */
+
+/* State */
+let items = [];               // displayed file items
+let currentIndex = 0;
+let currentPath = '/';
+let navStack = [];            // navigation history stack for Back
+let offset = 0;
+const pageSize = 60;
+let mode = 'grid';           // 'grid' or 'list'
+
+/* DOM */
+const gridView = document.getElementById('gridView');
+const listView = document.getElementById('listView');
+const foldersContainer = document.getElementById('foldersContainer');
+const breadcrumbContainer = document.getElementById('breadcrumbContainer');
+const resultCount = document.getElementById('resultCount');
+const modal = document.getElementById('modal');
+const mediaArea = document.getElementById('mediaArea');
+const metaBox = document.getElementById('metaBox');
+const downloadBtn = document.getElementById('downloadBtn');
+
+/* Controls */
+document.getElementById('searchBtn').addEventListener('click', ()=> search());
+document.getElementById('refreshBtn').addEventListener('click', ()=> navigateTo(currentPath));
+document.getElementById('toggleViewBtn').addEventListener('click', toggleView);
+document.getElementById('loadMoreBtn').addEventListener('click', loadMore);
+document.getElementById('searchInput').addEventListener('keyup', (e)=> { if(e.key==='Enter') search(); });
+document.getElementById('uploadBtn').addEventListener('click', ()=> { alert('Use phone app or implement file picker to upload'); });
+document.getElementById('backBtn').addEventListener('click', navigateBack);
+document.getElementById('prevBtn').addEventListener('click', prev);
+document.getElementById('nextBtn').addEventListener('click', next);
+
+/* Keyboard support for desktop */
+document.addEventListener('keydown', (e)=>{
+  if(modal.classList.contains('show')){
+    if(e.key === 'ArrowLeft') prev();
+    if(e.key === 'ArrowRight') next();
+    if(e.key === 'Escape') closeModal();
+  }
+  if(e.key === 'f' && (e.ctrlKey || e.metaKey)){ // Ctrl/Cmd+F to focus search
+    e.preventDefault();
+    document.getElementById('searchInput').focus();
+  }
+});
+
+/* Helpers */
+function normalizePath(p){
+  if(!p) return '/';
+  if(p === '/') return '/';
+  if(!p.startsWith('/')) p = '/'+p;
+  if(p.length>1 && p.endsWith('/')) p = p.slice(0,-1);
+  return p;
+}
+
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, (c)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function normalizeItem(raw){
+  // support different API shapes
+  const name = raw.name || raw.filename || raw.title || (raw.path? raw.path.split('/').pop() : '');
+  const path = raw.path || raw.filepath || raw.file || ('/' + (raw.filepath || '').replace(/^\/+/, ''));
+  const mime = raw.mime || raw.mimetype || raw.type || '';
+  const modified = raw.modified || raw.uploadedAt || raw.uploaded_at || raw.modified_at || '';
+  const thumb = raw.thumb || ('/api/thumbnail?path=' + encodeURIComponent(path) + '&w=360');
+  return { raw, name, path, mime, modified, thumb };
+}
+
+/* Breadcrumb + navigation */
+function buildBreadcrumb(p){
+  p = normalizePath(p);
+  breadcrumbContainer.innerHTML = '';
+  const parts = p.split('/').filter(Boolean);
+  const homeBtn = document.createElement('button');
+  homeBtn.className = 'crumb';
+  homeBtn.textContent = 'Home';
+  homeBtn.onclick = ()=> navigateTo('/');
+  breadcrumbContainer.appendChild(homeBtn);
+
+  let acc = '';
+  parts.forEach(seg=>{
+    acc += '/'+seg;
+    const btn = document.createElement('button');
+    btn.className = 'crumb';
+    btn.textContent = seg;
+    btn.onclick = ()=> navigateTo(acc, true);
+    breadcrumbContainer.appendChild(btn);
+  });
+}
+
+function navigateTo(path, pushStack=true){
+  path = normalizePath(path);
+  if(pushStack && currentPath !== path) navStack.push(currentPath);
+  currentPath = path;
+  offset = 0;
+  items = [];
+  buildBreadcrumb(path);
+  loadPage(path, offset, pageSize, true);
+}
+
+function navigateBack(){
+  if(navStack.length > 0){
+    const prev = navStack.pop();
+    currentPath = prev;
+    offset = 0; items = [];
+    buildBreadcrumb(currentPath);
+    loadPage(currentPath, offset, pageSize, true);
+    return;
+  }
+  // fallback to parent
+  if(currentPath === '/') return;
+  const parts = currentPath.split('/').filter(Boolean); parts.pop();
+  const parent = parts.length ? '/'+parts.join('/') : '/';
+  currentPath = parent; offset = 0; items = [];
+  buildBreadcrumb(currentPath);
+  loadPage(currentPath, offset, pageSize, true);
+}
+
+/* Load page (grid view) */
+async function loadPage(p, off, lim, replace){
+  gridView.innerHTML = '<div class="muted">Loading…</div>';
+  listView.innerHTML = '';
+  foldersContainer.innerHTML = '';
+
+  try{
+    const res = await fetch('/api/grid?path=' + encodeURIComponent(p) + '&offset=' + off + '&limit=' + lim);
+    if(!res.ok) throw new Error('grid fetch failed: ' + res.status);
+    const json = await res.json();
+    const all = json.items || [];
+
+    // folders detection (support several shapes)
+    const folders = all.filter(i => {
+      const t = (i.type || i.kind || '').toString().toLowerCase();
+      return t === 'dir' || t === 'folder' || i.isDir === true || i.is_directory === true;
+    });
+
+    const files = all.filter(i => {
+      const t = (i.type || i.kind || '').toString().toLowerCase();
+      return !(t === 'dir' || t === 'folder' || i.isDir === true || i.is_directory === true);
+    }).map(normalizeItem);
+
+    renderFolders(folders);
+    if(replace) items = files; else items = items.concat(files);
+    renderGrid(items);
+    renderList(items);
+    resultCount.textContent = items.length + ' items';
+  }catch(err){
+    gridView.innerHTML = '<div class="muted">Error loading: '+escapeHtml(err.message)+'</div>';
+    console.error(err);
+  }
+}
+
+/* Renderers */
+function renderFolders(list){
+  foldersContainer.innerHTML = '';
+  if(!list || list.length===0) return;
+  list.forEach(f=>{
+    const name = f.name || f.filename || (f.path? f.path.split('/').pop() : 'folder');
+    const tile = document.createElement('div');
+    tile.className = 'folder-tile';
+    tile.tabIndex = 0;
+    tile.innerHTML = '<div style="font-weight:600">📁 '+escapeHtml(name)+'</div><div class="muted">'+(new Date(f.modified||f.uploadedAt||'').toLocaleDateString()||'')+'</div>';
+    tile.onclick = ()=> navigateTo(f.path || f.filepath || '/'+name);
+    foldersContainer.appendChild(tile);
+  });
+}
+
+function renderGrid(list){
+  gridView.innerHTML = '';
+  if(!list || list.length===0){ gridView.innerHTML = '<div class="muted">No files</div>'; return; }
+  list.forEach((it, idx)=>{
+    const c = document.createElement('div');
+    c.className = 'card';
+    c.tabIndex = 0;
+    c.onclick = ()=> openModal(idx);
+    const img = document.createElement('img');
+    img.className = 'thumb';
+    img.loading = 'lazy';
+    // retina srcset: request double-size thumbnail if devicePixelRatio>1
+    const w = (window.devicePixelRatio && window.devicePixelRatio > 1) ? 720 : 360;
+    img.src = it.thumb.replace(/w=\d+/,'w='+w) || ('/api/thumbnail?path='+encodeURIComponent(it.path)+'&w='+w);
+    img.onerror = function(){ this.src = '/api/file?path='+encodeURIComponent(it.path); };
+    img.alt = it.name || '';
+    const m = document.createElement('div'); m.className = 'meta';
+    m.innerHTML = '<div style="font-weight:600">'+escapeHtml(it.name||'')+'</div><div class="muted">'+(it.modified? new Date(it.modified).toLocaleString() : '')+'</div>';
+    c.appendChild(img); c.appendChild(m);
+    gridView.appendChild(c);
+  });
+}
+
+function renderList(list){
+  listView.innerHTML = '';
+  if(!list || list.length===0){ listView.innerHTML = '<div class="muted">No files</div>'; return; }
+  list.forEach((it, idx)=>{
+    const li = document.createElement('div');
+    li.className = 'list-item'; li.tabIndex = 0;
+    li.onclick = ()=> openModal(idx);
+    const img = document.createElement('img'); img.className = 'list-thumb';
+    const w = 480;
+    img.src = it.thumb.replace(/w=\d+/,'w='+w) || ('/api/thumbnail?path='+encodeURIComponent(it.path)+'&w='+w);
+    img.onerror = function(){ this.src = '/api/file?path='+encodeURIComponent(it.path); };
+    const meta = document.createElement('div');
+    meta.innerHTML = '<div style="font-weight:600">'+escapeHtml(it.name||'')+'</div><div class="muted">'+(it.modified? new Date(it.modified).toLocaleString() : '')+'</div>';
+    li.appendChild(img); li.appendChild(meta);
+    listView.appendChild(li);
+  });
+}
+
+/* Search */
+async function search(){
+  const q = document.getElementById('searchInput').value.trim();
+  const regex = document.getElementById('regexChk').checked ? '1' : '0';
+  if(q === '') { navigateTo('/'); return; }
+  offset = 0; items = [];
+  gridView.innerHTML = '<div class="muted">Searching…</div>'; listView.innerHTML = ''; foldersContainer.innerHTML = '';
+  try{
+    const res = await fetch('/api/search?query=' + encodeURIComponent(q) + '&limit=500&regex=' + regex);
+    if(!res.ok){
+      const t = await res.text();
+      gridView.innerHTML = '<div class="muted">Search error: '+escapeHtml(t)+'</div>';
+      return;
+    }
+    const json = await res.json();
+    const out = json.items || [];
+    items = out.map(normalizeItem);
+    renderGrid(items); renderList(items);
+    resultCount.textContent = items.length + ' results';
+  }catch(err){
+    gridView.innerHTML = '<div class="muted">Search failed</div>';
+    console.error(err);
+  }
+}
+
+function loadMore(){ offset += pageSize; loadPage(currentPath, offset, pageSize, false); }
+
+/* Viewer modal */
+function openModal(idx){
+  currentIndex = idx; const it = items[idx]; if(!it) return;
+  mediaArea.innerHTML = '';
+  const mime = it.mime || it.raw.mime || '';
+  if(mime.startsWith('image/') || /\.(jpe?g|png|gif|webp|avif)$/i.test(it.name)){
+    const img = document.createElement('img'); img.src = '/api/file?path='+encodeURIComponent(it.path); mediaArea.appendChild(img);
+  } else if(mime.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(it.name)){
+    const v = document.createElement('video'); v.controls=true; v.autoplay=true; v.src='/api/file?path='+encodeURIComponent(it.path); mediaArea.appendChild(v);
+  } else {
+    const a = document.createElement('a'); a.href='/api/file?path='+encodeURIComponent(it.path); a.textContent='Download'; a.target='_blank'; mediaArea.appendChild(a);
+  }
+  downloadBtn.href = '/api/file?path='+encodeURIComponent(it.path);
+  fetch('/api/metadata?path='+encodeURIComponent(it.path)).then(r=>r.ok? r.json() : {}).then(m=>{
+    metaBox.textContent = m ? JSON.stringify(m, null, 2) : '';
+  }).catch(()=>metaBox.textContent='');
+  modal.classList.add('show'); modal.setAttribute('aria-hidden','false');
+}
+
+function closeModal(){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); }
+function prev(){ if(items.length===0) return; currentIndex = (currentIndex - 1 + items.length) % items.length; openModal(currentIndex); }
+function next(){ if(items.length===0) return; currentIndex = (currentIndex + 1) % items.length; openModal(currentIndex); }
+
+/* view toggle */
+function toggleView(){
+  mode = (mode === 'grid') ? 'list' : 'grid';
+  document.getElementById('toggleViewBtn').textContent = (mode === 'grid') ? '▦' : '☰';
+  gridView.style.display = (mode === 'grid') ? 'grid' : 'none';
+  listView.style.display = (mode === 'list') ? 'block' : 'none';
+}
+
+/* init */
+navigateTo('/');
+toggleView(); // set initial view (grid by default)
+
+/* small UX: long-press on mobile to show file meta (optional) */
+let longPressTimer = null;
+document.addEventListener('touchstart', (ev)=>{
+  const t = ev.target.closest('.card, .list-item');
+  if(!t) return;
+  longPressTimer = setTimeout(()=> {
+    const idx = Array.from(document.querySelectorAll('.card, .list-item')).indexOf(t);
+    if(idx >= 0) {
+      fetch('/api/metadata?path='+encodeURIComponent(items[idx].path)).then(r=>r.ok? r.json() : {}).then(m=>{
+        alert(JSON.stringify(m, null, 2));
+      }).catch(()=>{});
+    }
+  }, 700);
+});
+document.addEventListener('touchend', ()=> { if(longPressTimer) clearTimeout(longPressTimer); });
+
+</script>
+</body>
+</html>

@@ -1,229 +1,209 @@
-# SmartHome AI Media Hub
+# LocalCloud
+
+Personal self-hosted photo/video storage & gallery (LocalCloud)
+
+---
 
 ## Overview
-SmartHome AI Media Hub is a **local-first personal cloud** that stores photos and videos securely on a Raspberry Pi (or any Linux device) using an external SSD.  
-It provides **DLNA streaming**, **semantic AI search**, and **Wi-Fi/Bluetooth hybrid connectivity** for Smart TVs and mobile devices — all while keeping your data private and local.
+
+LocalCloud is a lightweight personal cloud that runs on your laptop or Raspberry Pi.  
+Features:
+- Store photos/videos locally (on a mounted SSD partition or system drive)
+- Mobile-first responsive UI (Grid/List) with thumbnails and preview
+- Device sync API (`/api/sync/upload`) with SHA256 deduplication
+- Background backup worker to copy files to a dedicated backup directory
+- Search API with optional regex mode (`/api/search?query=...&regex=1`)
+- BasicAuth protection and optional HTTPS via tunneling (ngrok or Cloudflare Tunnel)
 
 ---
 
-## ✨ Key Features
-- 🧠 **AI Semantic Search** — Find media using natural language (“beach sunset 2023”).
-- 📡 **DLNA Streaming** — Seamless playback on Smart TVs and media players.
-- 🔒 **Local Privacy** — All media and metadata stored locally.
-- 🌐 **Hybrid Connectivity** — Wi-Fi and Bluetooth for smart discovery.
-- ☁️ **Optional Cloud AI Offload** — Encrypts and processes embeddings remotely if needed.
+## Quick start (macOS / Linux)
 
----
+### Prerequisites
+- Go 1.20+ (for building the server)
+- git
+- `make`
+- Optional: `ngrok` for secure public HTTPS tunnels
 
-## 🧩 Architecture
-
-```mermaid
-flowchart LR
-    A[Mobile App] -->|Wi-Fi/Bluetooth| B[Golang Media Server]
-    B --> C[SQLite DB]
-    B --> D[Qdrant Vector DB]
-    B --> E[Gerbera DLNA Server]
-    D -->|Optional Cloud Embedding| F[AI Search Service]
-    E -->|DLNA Protocol| G[Smart TV / Mobile Player]
-```
-
----
-
-## 🧠 Components
-| Component | Description |
-|------------|--------------|
-| **localcloud** | Golang backend — manages media ingestion, metadata, and search API |
-| **ai-service** | Python-based embedding generator for semantic search |
-| **qdrant** | Vector database for AI-powered search |
-| **gerbera** | DLNA server for streaming on Smart TVs |
-| **SQLite** | Lightweight local database for metadata and indexing |
-
----
-
-## 🧰 Prerequisites
-- Raspberry Pi 5 (8GB RAM recommended)
-- External SSD (with one partition for media)
-- Docker & Docker Compose installed  
-  ```bash
-  sudo apt update && sudo apt install -y docker docker-compose
-  sudo systemctl enable docker && sudo systemctl start docker
-  ```
-
----
-
-## ⚙️ Setup Instructions
-
-### 1. Mount External SSD Partition
-
-#### Identify the partition
-Plug in your SSD and run:
-```bash
-lsblk
-```
-Example output:
-```
-NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINT
-sda           8:0    0  500G  0 disk 
-├─sda1        8:1    0  300G  0 part 
-├─sda2        8:2    0  200G  0 part 
-```
-Here, `sda1` will be used for LocalCloud media, and `sda2` can be kept for personal files.
-
-#### Create a mount point
-```bash
-sudo mkdir -p /data
-sudo chown $USER:$USER /data
-```
-
-#### Mount the partition
-```bash
-sudo mount /dev/sda1 /data
-```
-> Replace `/dev/sda1` with the correct partition ID from `lsblk`.
-
-#### Make it persistent on reboot
-Edit `/etc/fstab`:
-```bash
-sudo nano /etc/fstab
-```
-Add the following line:
-```
-/dev/sda1  /data  ext4  defaults  0  2
-```
-> Replace `ext4` with your partition filesystem (use `blkid` to check if unsure).
-
-Save and exit (`Ctrl+O`, `Ctrl+X`). Test the mount:
-```bash
-sudo mount -a
-df -h | grep /data
-```
-If `/data` shows your SSD partition, it’s ready for LocalCloud to use.
-
-### 2. Clone the Repository
+### Build & run locally
+1. Clone repo:
 ```bash
 git clone git@github.com:mayur-tolexo/localcloud.git
 cd localcloud
 ```
 
-### 3. Configure Environment
-Create a `.env` file:
+2. Prepare data directory (example uses `~/localcloud-data`):
 ```bash
-PI_IP=192.168.1.42
-CLOUD_API_KEY=your_cloud_api_key_here
+export DATA_DIR=~/localcloud-data
+mkdir -p "$DATA_DIR"
 ```
 
-### 4. Start Services
+3. Set credentials and port:
 ```bash
-docker compose up -d --build
+export APP_USER=mayur
+export APP_PASS=strongpassword
+export PORT=8080
 ```
 
-### 5. Verify Running Containers
+4. Build & run (macOS / Linux native):
 ```bash
-docker ps
+make run-local DATA_DIR=$DATA_DIR PORT=$PORT
 ```
-
-Expected services:
-- `localcloud` (Golang API) → `:8080`
-- `ai-service` (Python AI microservice) → `:5000`
-- `qdrant` (Vector DB) → `:6333`
-- `gerbera` (DLNA) → auto-discoverable by Smart TV
+This runs the server and binds to `http://localhost:8080`. The UI is served at `http://localhost:8080/ui/drive.html`.
 
 ---
 
-## 🧠 Example Usage
+## Ngrok — quick secure public access (recommended for testing)
 
-### List all media
+Ngrok provides an HTTPS tunnel to your local server. This is ideal for testing from mobile or remote networks without exposing ports.
+
+### Install ngrok (macOS with Homebrew)
 ```bash
-curl http://192.168.1.42:8080/api/media
+brew install ngrok/ngrok/ngrok
 ```
+or download from https://ngrok.com.
 
-### Semantic Search
+### Sign up & configure
+1. Create a free account at https://dashboard.ngrok.com
+2. Copy your authtoken from the dashboard.
+3. Authenticate your client:
 ```bash
-curl "http://192.168.1.42:8080/api/search?q=mountain+trip"
+ngrok config add-authtoken YOUR_NGROK_AUTHTOKEN
 ```
 
-**Response:**
-```json
-{
-  "results": [
-    { "file": "mountain_trip_2024.jpg", "score": 0.92 },
-    { "file": "trekking_valley.png", "score": 0.88 }
-  ]
-}
-```
-
----
-
-## 🖥️ DLNA Access
-1. Ensure your Smart TV or media player is connected to the same Wi-Fi.
-2. Open the **DLNA / Media Server** app on the TV.
-3. Look for **SmartHome AI Media Hub (Gerbera)**.
-4. Browse and play media directly from the Raspberry Pi.
-
----
-
-## 🧩 Folder Structure
-```
-.
-├── cmd/
-│   └── server/main.go        # Golang entrypoint
-├── internal/
-│   ├── media/                # Media scanner
-│   ├── db/                   # SQLite models
-│   └── search/               # Qdrant integration
-├── python-ai/                # Python embedding microservice
-├── gerbera/config/           # DLNA server config
-├── docker-compose.yml
-├── .gitignore
-├── .env
-├── Makefile
-└── README.md
-```
-
----
-
-## 🐳 Docker Compose Overview
-- **localcloud** — Golang backend API  
-- **ai-service** — Embedding and AI indexing  
-- **qdrant** — Vector DB for similarity search  
-- **gerbera** — DLNA streaming  
-
-### Start all services
+### Run ngrok (after your server is running)
 ```bash
-docker compose up -d
+ngrok http 8080
 ```
+Ngrok will print a forwarding URL like:
+```
+Forwarding                    https://abcd-1234.ngrok.io -> http://localhost:8080
+```
+Open `https://abcd-1234.ngrok.io/ui/drive.html` and log in with `APP_USER` / `APP_PASS`.
 
-### Stop services
+**Notes**
+- Free ngrok URLs are ephemeral (new URL per session). Use ngrok paid for reserved subdomain.
+- Ngrok terminates TLS — traffic between ngrok and your laptop is HTTP. The app uses BasicAuth so credentials are protected in transit (HTTPS to ngrok) but consider additional security for production.
+
+---
+
+## Cloudflare Tunnel (persistent, free)
+If you want a stable hostname and automatic TLS without opening ports, use Cloudflare Tunnel (`cloudflared`).
+
+1. Install cloudflared:
 ```bash
-docker compose down
+brew install cloudflared
 ```
 
----
-
-## 🔒 Privacy Model
-- All media stored locally under `/data`.
-- AI embeddings can optionally be synced (encrypted) to cloud Qdrant.
-- No external dependency required for private mode.
-
----
-
-## 🧹 .gitignore Reference
-- Excludes media, DB files, Docker volumes, and build artifacts.
-- Keeps repo lightweight and secure.
-
----
-
-## 🧭 Git Setup
+2. Login & create tunnel:
 ```bash
-git init
-git add .
-git commit -m "Initial commit - SmartHome AI Media Hub setup"
-git remote add origin git@github.com:mayur-tolexo/localcloud.git
-git branch -M main
-git push -u origin main
+cloudflared tunnel login
+cloudflared tunnel create localcloud
+cloudflared tunnel route dns localcloud <your-host.example.com>
+cloudflared tunnel run localcloud --url http://localhost:8080
+```
+
+This maps your chosen hostname to the local server. TLS is handled by Cloudflare.
+
+---
+
+## Mounting external SSD partition (example)
+
+If you want LocalCloud to use a partition on an external SSD:
+
+1. Identify partition (macOS example using diskutil):
+```bash
+diskutil list
+```
+2. Create a mount point and mount (Linux example):
+```bash
+sudo mkdir -p /mnt/localcloud-data
+sudo mount /dev/sdX1 /mnt/localcloud-data
+sudo chown $(whoami):$(whoami) /mnt/localcloud-data
+```
+
+Use that path as `DATA_DIR` when starting LocalCloud:
+```bash
+export DATA_DIR=/mnt/localcloud-data
+make run-local DATA_DIR=$DATA_DIR PORT=8080
+```
+
+> You asked to use *one partition only* — ensure the mount path points to the one partition you want LocalCloud to use.
+
+---
+
+## Docker / containerd (optional)
+
+A `docker-compose.yml` and `Makefile` target are included (if available). To run with Docker:
+```bash
+docker-compose up -d
+```
+If you prefer `containerd`, run the image/container via your standard tooling. Make sure to mount `$DATA_DIR` into the container and set the required environment variables (`APP_USER`, `APP_PASS`, `PORT`).
+
+---
+
+## Important Environment Variables
+
+- `DATA_DIR` — directory where LocalCloud stores files & DB (required)
+- `APP_USER` — BasicAuth username (required)
+- `APP_PASS` — BasicAuth password (required)
+- `PORT` — port to bind (default `8080`)
+- `BACKUP_DIR` — (optional) if you want backups on a different mount
+
+Example:
+```bash
+export DATA_DIR=~/localcloud-data
+export BACKUP_DIR=/mnt/backups
+export APP_USER=mayur
+export APP_PASS=strongpass
+export PORT=8080
 ```
 
 ---
 
-## 📜 License
-MIT © 2025 SmartHome AI Hub Contributors
+## API endpoints (use with BasicAuth)
+
+- `POST /api/sync/upload` — multipart form upload (`file`, `device_id`)
+- `GET /api/sync/status?device_id=...` — recent uploads and backup state
+- `GET /api/search?query=...&regex=1` — search (regex optional)
+- `GET /api/grid?path=/some/path` — list folder contents (used by UI)
+- `GET /api/file?path=...` — stream file
+- `GET /api/thumbnail?path=...&w=...` — thumbnail
+- `GET /api/metadata?path=...` — metadata for file
+
+All requests must include BasicAuth credentials (unless you change middleware).
+
+---
+
+## Security & production notes
+
+- The README covers **testing** and **personal use**. For production usage:
+  - Use strong credentials and rotate them.
+  - Prefer Cloudflare Tunnel or a reverse proxy with TLS termination.
+  - Consider implementing per-device API tokens instead of BasicAuth.
+  - Monitor disk usage and set quotas if needed.
+  - Backups should be on a physically separate drive if possible.
+
+---
+
+## Troubleshooting
+
+- `no such column: exif_datetime` — run the migration code included in `internal/api/sync.go` (`InitSyncDB()` handles schema migrations automatically).
+- Thumbnails not showing — ensure thumbnail worker is running (`StartThumbnailWorker`) and that `DATA_DIR` has proper permissions.
+- CORS preflight errors — ensure CORS middleware is registered before BasicAuth in `main.go`.
+
+---
+
+## Example: Run locally + ngrok (one-liners)
+
+```bash
+# start server
+DATA_DIR=~/localcloud-data APP_USER=mayur APP_PASS=strongpass PORT=8080 make run-local DATA_DIR=~/localcloud-data PORT=8080 &
+
+# in another terminal, start ngrok
+ngrok http 8080
+```
+
+Open the ngrok HTTPS URL and log in.
+
+---

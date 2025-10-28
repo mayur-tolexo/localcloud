@@ -62,9 +62,8 @@ func processBackup(job backupJob, backupDir string) {
 		return
 	}
 
-	// if already exists, skip
+	// if already exists, skip (update DB)
 	if _, err := os.Stat(dest); err == nil {
-		// update DB
 		now := time.Now().Format(time.RFC3339)
 		_, _ = db.DB.Exec("UPDATE media SET backed_up = 1, backup_path = ?, backup_at = ? WHERE id = ?", dest, now, job.mediaID)
 		return

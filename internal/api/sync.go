@@ -10,14 +10,19 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"localcloud/internal/db"
 	"localcloud/internal/storage"
+
+	"github.com/rwcarlsen/goexif/exif"
 )
 
-// InitSyncDB ensures the media table exists. Call once after db.InitDB()
+// InitSyncDB ensures the media table exists and migrates missing columns/indexes.
+// Call once after db.InitDB()
 func InitSyncDB() error {
+	// Ensure base table exists (this will not modify existing columns)
 	_, err := db.DB.Exec(`
 	CREATE TABLE IF NOT EXISTS media (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,13 +33,68 @@ func InitSyncDB() error {
 		uploaded_at DATETIME DEFAULT (datetime('now')),
 		backed_up INTEGER DEFAULT 0,
 		backup_path TEXT,
-		backup_at DATETIME,
-		retry_count INTEGER DEFAULT 0
+		backup_at DATETIME
 	);
-	CREATE INDEX IF NOT EXISTS idx_media_sha256 ON media(sha256);
-	CREATE INDEX IF NOT EXISTS idx_media_device ON media(device_id);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Query existing columns
+	rows, err := db.DB.Query(`PRAGMA table_info(media);`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	existing := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name string
+		var ctype string
+		var notnull int
+		var dfltValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			return err
+		}
+		existing[name] = true
+	}
+
+	// Columns we want to ensure exist and their definitions
+	toAdd := map[string]string{
+		"retry_count":   "INTEGER DEFAULT 0",
+		"exif_datetime": "TEXT",
+		"camera_model":  "TEXT",
+	}
+
+	for col, def := range toAdd {
+		if !existing[col] {
+			alter := fmt.Sprintf("ALTER TABLE media ADD COLUMN %s %s;", col, def)
+			if _, err := db.DB.Exec(alter); err != nil {
+				// Log error and continue attempting other columns
+				fmt.Println("migration: failed to add column", col, ":", err)
+			} else {
+				fmt.Println("migration: added column", col)
+			}
+		}
+	}
+
+	// Ensure useful indexes exist
+	if _, err := db.DB.Exec(`CREATE INDEX IF NOT EXISTS idx_media_sha256 ON media(sha256);`); err != nil {
+		return err
+	}
+	if _, err := db.DB.Exec(`CREATE INDEX IF NOT EXISTS idx_media_device ON media(device_id);`); err != nil {
+		return err
+	}
+	if _, err := db.DB.Exec(`CREATE INDEX IF NOT EXISTS idx_media_filename ON media(filename);`); err != nil {
+		return err
+	}
+	if _, err := db.DB.Exec(`CREATE INDEX IF NOT EXISTS idx_media_exif_dt ON media(exif_datetime);`); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // SyncUploadHandler handles device uploads (multipart form-data, key "file")
@@ -119,9 +179,30 @@ func SyncUploadHandler(w http.ResponseWriter, r *http.Request) {
 		_ = os.Remove(tmpPath)
 	}
 
-	// insert into media table
-	res, err := db.DB.Exec("INSERT INTO media(filename, filepath, sha256, device_id) VALUES(?, ?, ?, ?)",
-		filepath.Base(finalPath), finalPath, sum, deviceID)
+	// extract EXIF for JPEGs
+	var exifDate, cameraModel string
+	ext := strings.ToLower(filepath.Ext(finalPath))
+	if ext == ".jpg" || ext == ".jpeg" {
+		if f2, err := os.Open(finalPath); err == nil {
+			if x, err := exif.Decode(f2); err == nil {
+				if dt, err := x.DateTime(); err == nil {
+					exifDate = dt.Format(time.RFC3339)
+				}
+				if m, err := x.Get(exif.Model); err == nil {
+					if s, err := m.StringVal(); err == nil {
+						cameraModel = s
+					}
+				}
+			}
+			_ = f2.Close()
+		}
+	}
+
+	// insert into media table including exif fields
+	res, err := db.DB.Exec(`
+		INSERT INTO media(filename, filepath, sha256, device_id, exif_datetime, camera_model) 
+		VALUES(?, ?, ?, ?, ?, ?)`,
+		filepath.Base(finalPath), finalPath, sum, deviceID, exifDate, cameraModel)
 	if err != nil {
 		// log but continue
 		fmt.Println("db insert error:", err)
@@ -130,6 +211,9 @@ func SyncUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	// enqueue backup job (background worker will copy to backup dir)
 	EnqueueBackup(finalPath, lastID)
+
+	// enqueue thumbnail generation if thumbnail worker is running
+	EnqueueThumbnail(finalPath)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -143,7 +227,7 @@ func SyncUploadHandler(w http.ResponseWriter, r *http.Request) {
 // SyncStatusHandler returns recent media for device (or global if device_id not supplied)
 func SyncStatusHandler(w http.ResponseWriter, r *http.Request) {
 	device := r.URL.Query().Get("device_id")
-	q := "SELECT id, filename, filepath, sha256, backed_up, backup_path, backup_at, uploaded_at FROM media"
+	q := "SELECT id, filename, filepath, sha256, backed_up, backup_path, backup_at, uploaded_at, exif_datetime, camera_model FROM media"
 	var rows *sql.Rows
 	var err error
 	if device != "" {
@@ -163,22 +247,28 @@ func SyncStatusHandler(w http.ResponseWriter, r *http.Request) {
 			id         int64
 			name       string
 			pathStr    string
-			sha        string
+			sha        sql.NullString
 			backedUp   int
 			backupPath sql.NullString
 			backupAt   sql.NullString
 			uploadedAt string
+			exifDT     sql.NullString
+			camera     sql.NullString
 		)
-		_ = rows.Scan(&id, &name, &pathStr, &sha, &backedUp, &backupPath, &backupAt, &uploadedAt)
+		_ = rows.Scan(&id, &name, &pathStr, &sha, &backedUp, &backupPath, &backupAt, &uploadedAt, &exifDT, &camera)
 		item := map[string]interface{}{
 			"id":         id,
 			"filename":   name,
 			"path":       relAPIPath(pathStr),
-			"sha256":     sha,
+			"sha256":     sha.String,
 			"backed_up":  backedUp == 1,
 			"backupPath": backupPath.String,
 			"backupAt":   backupAt.String,
 			"uploadedAt": uploadedAt,
+			"exif": map[string]interface{}{
+				"datetime":    exifDT.String,
+				"cameraModel": camera.String,
+			},
 		}
 		out = append(out, item)
 	}
