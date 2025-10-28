@@ -8,7 +8,7 @@ var (
 )
 
 func LoadConfig() {
-	DataDir = getenv("DATA_DIR", "/data")
+	DataDir = getenv("DATA_DIR", "./data")
 	BindPort = getenv("PORT", getenv("BIND_PORT", "8080"))
 }
 

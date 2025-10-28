@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"localcloud/internal/api"
 	"localcloud/internal/config"
@@ -28,15 +29,44 @@ func main() {
 		log.Fatalf("failed to create data dir: %v", err)
 	}
 
-	// Init DB
+	// Create full DB path inside DATA dir
 	dbPath := filepath.Join(dataDir, "metadata.db")
+
+	// Ensure the parent directory exists
+	if err := ensureDir(filepath.Dir(dbPath)); err != nil {
+		log.Fatalf("failed to create DB directory: %v", err)
+	}
+
+	// Create DB file if missing
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		file, err := os.Create(dbPath)
+		if err != nil {
+			log.Fatalf("failed to create metadata.db: %v", err)
+		}
+		file.Close()
+		log.Printf("Created new database at %s", dbPath)
+	}
+
+	// Ensure writable permissions
+	if err := os.Chmod(dbPath, 0664); err != nil {
+		log.Printf("warning: unable to set db file permissions: %v", err)
+	}
+
+	// Initialize the database
 	db.InitDB(dbPath)
 
-	if err := api.InitSearchIndex(); err != nil {
-		log.Printf("InitSearchIndex: %v", err)
-	} else {
-		log.Printf("InitSearchIndex: OK")
-	}
+	// synchronous indexing at startup and enqueue thumbnails
+	go func() {
+		processed, err := db.IndexDataDirSync(dataDir)
+		if err != nil {
+			log.Printf("background indexing error: %v", err)
+			return
+		}
+		log.Printf("background indexed %d files. Enqueuing thumbs...", len(processed))
+		for _, apiPath := range processed {
+			api.EnqueueThumbnail(filepath.Join(dataDir, strings.TrimPrefix(apiPath, "/")))
+		}
+	}()
 
 	// initialize media table for sync/backup
 	if err := api.InitSyncDB(); err != nil {
@@ -66,6 +96,7 @@ func main() {
 			next.ServeHTTP(w, req)
 		})
 	})
+	r.Use(middleware.RecoverJSON)
 
 	// Register API routes (and static UI) on router
 	api.RegisterRoutes(r, dataDir)
