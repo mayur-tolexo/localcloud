@@ -28,13 +28,14 @@ func SaveFile(destDir, filename string, r io.Reader) (string, error) {
 	return outPath, nil
 }
 
+// DeleteFile removes a file under destDir (filename is sanitized)
 func DeleteFile(destDir, filename string) error {
 	filename = filepath.Base(filename)
 	path := filepath.Join(destDir, filename)
 	return os.Remove(path)
 }
 
-// CopyFile copies src -> dst, creating parent directories as needed.
+// CopyFile copies src -> dst, creating parent directories as needed, using atomic tmp->rename
 func CopyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
