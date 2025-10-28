@@ -22,4 +22,8 @@ func RegisterRoutes(r *mux.Router, dataDir string) {
 	r.HandleFunc("/api/thumbnail", ThumbnailHandler).Methods("GET")
 	r.HandleFunc("/api/metadata", MetadataHandler).Methods("GET")
 	r.HandleFunc("/api/grid", GridHandler).Methods("GET")
+
+	// sync handlers
+	r.HandleFunc("/api/sync/upload", SyncUploadHandler).Methods("POST")
+	r.HandleFunc("/api/sync/status", SyncStatusHandler).Methods("GET")
 }
