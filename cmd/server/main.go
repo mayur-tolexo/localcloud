@@ -32,6 +32,12 @@ func main() {
 	dbPath := filepath.Join(dataDir, "metadata.db")
 	db.InitDB(dbPath)
 
+	if err := api.InitSearchIndex(); err != nil {
+		log.Printf("InitSearchIndex: %v", err)
+	} else {
+		log.Printf("InitSearchIndex: OK")
+	}
+
 	// initialize media table for sync/backup
 	if err := api.InitSyncDB(); err != nil {
 		log.Fatalf("InitSyncDB failed: %v", err)

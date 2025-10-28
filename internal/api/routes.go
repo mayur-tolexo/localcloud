@@ -30,4 +30,11 @@ func RegisterRoutes(r *mux.Router, dataDir string) {
 
 	// search
 	r.HandleFunc("/api/search", SearchHandler).Methods("GET")
+
+	// single file download (attachment)
+	r.HandleFunc("/api/download", DownloadFileHandler).Methods("GET")
+
+	// download directory as zip (streaming)
+	r.HandleFunc("/api/download-zip", DownloadZipHandler).Methods("GET")
+
 }

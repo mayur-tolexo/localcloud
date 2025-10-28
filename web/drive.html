@@ -3,446 +3,370 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>LocalCloud — Drive</title>
+<title>LocalCloud — Mobile (Folders + Files + Download)</title>
 <meta name="color-scheme" content="light dark">
 <style>
-  :root{
-    --bg:#f7f7fb; --card:#fff; --muted:#6b7280; --accent:#2563eb;
-    --gap:12px; --radius:10px; --shadow: 0 6px 18px rgba(2,6,23,0.06);
-    --tap:44px;
-  }
-  /* Basic layout */
-  html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial; background:var(--bg); color:#071031; -webkit-font-smoothing:antialiased}
-  .app{display:flex;flex-direction:column;min-height:100vh}
+:root{
+  --bg:#f6f7fb; --card:#fff; --muted:#6b7280; --accent:#0b6cff;
+  --gap:12px; --radius:12px; --shadow:0 8px 22px rgba(8,12,30,0.06);
+  --tap:56px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#071031;-webkit-font-smoothing:antialiased}
+.app{min-height:100vh;display:flex;flex-direction:column}
 
-  /* Top bar */
-  .top{
-    display:flex;align-items:center;gap:12px;padding:12px;
-    background:linear-gradient(90deg,#0f172a,#0b1220);color:#fff;flex-wrap:wrap;
-  }
-  .brand{font-weight:700;font-size:18px}
-  .searchbar{display:flex;align-items:center;gap:8px;flex:1;min-width:180px}
-  .searchbar input{
-    flex:1;padding:10px 12px;border-radius:10px;border:0;min-height:var(--tap);font-size:15px;
-  }
-  .searchbar button{padding:10px 12px;border-radius:10px;border:0;background:var(--accent);color:#fff;cursor:pointer}
-  .controls{display:flex;gap:8px;align-items:center}
-  .icon-btn{background:#fff;border-radius:10px;padding:8px 10px;border:0;cursor:pointer;min-height:var(--tap)}
-  .icon-btn[aria-pressed="true"]{box-shadow:inset 0 0 0 2px rgba(37,99,235,0.15)}
-  .small-muted{color:rgba(255,255,255,0.85);font-size:13px}
+/* topbar */
+.top{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:8px;padding:10px;background:linear-gradient(90deg,#07203a,#0a2540);color:#fff}
+.brand{font-weight:700;font-size:16px;min-width:40px}
+.search{flex:1;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.06);padding:6px;border-radius:12px;border:1px solid rgba(255,255,255,0.04)}
+.search input{flex:1;border:0;background:transparent;padding:10px 6px;color:#fff;font-size:16px;outline:none}
+.icon{background:var(--card);border-radius:10px;padding:8px;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;box-shadow:var(--shadow);cursor:pointer}
 
-  /* Main area */
-  .main{display:flex;flex:1;padding:16px;gap:16px;box-sizing:border-box}
-  /* left panel reserved for folder tree on wide screens */
-  .left{display:none}
-  .center{flex:1;display:flex;flex-direction:column;gap:12px}
+/* breadcrumb */
+.header-strip{display:flex;align-items:center;gap:8px;padding:8px 10px;background:transparent}
+.back{font-size:14px;color:var(--muted);padding:6px 8px;border-radius:8px;background:transparent;border:0;cursor:pointer}
 
-  /* Breadcrumbs */
-  .breadcrumb{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .crumb{background:var(--card);border-radius:8px;padding:6px 8px;border:0;cursor:pointer;font-size:13px;box-shadow:var(--shadow)}
-  .crumb:focus{outline:3px solid rgba(37,99,235,0.14)}
+/* content */
+.container{flex:1;overflow:auto;padding:10px}
+.section-title{font-weight:700;margin:8px 0;color:#0b1220;display:flex;align-items:center;justify-content:space-between}
+.folder-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
+.folder-tile{background:var(--card);border-radius:12px;overflow:hidden;cursor:pointer;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;padding:6px}
+.folder-thumb{width:100%;height:110px;object-fit:cover;background:#eef3ff;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.folder-name{margin-top:8px;font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;text-align:center}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.card{background:var(--card);border-radius:12px;overflow:hidden;cursor:pointer;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.thumb{width:100%;height:120px;object-fit:cover;background:#eef3ff}
+.meta{padding:8px;font-size:13px}
+.meta .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.muted{color:var(--muted);font-size:12px}
 
-  /* folders */
-  .folders{display:flex;gap:10px;overflow:auto;padding-bottom:6px}
-  .folder-tile{min-width:120px;padding:10px;background:var(--card);border-radius:10px;box-shadow:var(--shadow);cursor:pointer;flex-shrink:0}
+/* empty state */
+.empty{padding:22px;border-radius:12px;background:var(--card);text-align:center;color:var(--muted);box-shadow:var(--shadow);margin-top:8px}
 
-  /* toolbar */
-  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:space-between}
-  .toolbar .left{display:flex;gap:8px;align-items:center}
+/* modal viewer */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:12px;z-index:999;visibility:hidden;opacity:0;transition:opacity .12s}
+.modal.show{visibility:visible;opacity:1}
+.viewer{width:100%;max-width:960px;background:#000;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.viewer img,.viewer video{max-width:100%;max-height:78vh;border-radius:8px}
+.viewer .meta{color:#e8eefc;font-size:13px}
 
-  /* grid / list */
-  .content{display:block}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-  .card{background:var(--card);border-radius:10px;overflow:hidden;cursor:pointer;box-shadow:var(--shadow);display:flex;flex-direction:column}
-  .thumb{width:100%;height:140px;object-fit:cover;background:#eee}
-  .meta{padding:10px;font-size:13px}
-  .muted{color:var(--muted);font-size:12px}
+/* bottom bar */
+.bottom-bar{position:sticky;bottom:0;background:linear-gradient(180deg,rgba(255,255,255,0.01),rgba(255,255,255,0.01));padding:10px;display:flex;gap:8px;justify-content:space-between;align-items:center;z-index:30}
 
-  .list{display:flex;flex-direction:column;gap:8px}
-  .list-item{display:flex;gap:12px;align-items:center;padding:10px;background:var(--card);border-radius:10px;box-shadow:var(--shadow);cursor:pointer}
-  .list-thumb{width:120px;height:72px;object-fit:cover;border-radius:8px;flex-shrink:0}
-
-  /* footer / load more */
-  .load-more{display:flex;align-items:center;justify-content:center;padding:12px}
-
-  /* modal viewer */
-  .modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;visibility:hidden;opacity:0;transition:opacity .12s}
-  .modal.show{visibility:visible;opacity:1}
-  .viewer{background:#000;max-width:95vw;max-height:95vh;padding:12px;border-radius:10px;display:flex;flex-direction:column;align-items:center}
-  .viewer img,.viewer video{max-width:100%;max-height:80vh;border-radius:6px}
-
-  /* responsive adjustments */
-  @media(min-width:900px){
-    .main{padding:24px}
-    .left{display:block;width:260px}
-    .grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
-    .thumb{height:160px}
-  }
-  @media(max-width:480px){
-    .grid{grid-template-columns:repeat(2,1fr)}
-    .thumb{height:120px}
-    .list-thumb{width:96px;height:64px}
-    .searchbar input{font-size:14px}
-    .brand{font-size:16px}
-    .top{padding:10px}
-  }
-
-  /* focus and keyboard */
-  .icon-btn:focus, .folder-tile:focus, .card:focus, .list-item:focus, .crumb:focus {outline:3px solid rgba(37,99,235,0.12)}
+/* responsive */
+@media(min-width:720px){
+  .folder-grid{grid-template-columns:repeat(4,1fr)}
+  .grid{grid-template-columns:repeat(4,1fr)}
+  .thumb{height:140px}
+}
 </style>
 </head>
 <body>
-  <div class="app" role="application" aria-label="LocalCloud">
+  <div class="app" role="application" aria-label="LocalCloud Mobile">
     <header class="top" role="banner">
       <div class="brand">LocalCloud</div>
-
-      <div class="searchbar" role="search">
-        <input id="searchInput" aria-label="Search files" placeholder="Search name / date / camera (checkbox for regex)"/>
-        <button id="searchBtn" class="icon-btn" aria-label="Search">Search</button>
-        <label style="display:flex;align-items:center;gap:6px;color:#e6eefb;margin-left:6px">
-          <input id="regexChk" type="checkbox" aria-label="Regex search"/> <span style="color:#e6eefb;font-size:13px;margin-left:4px">regex</span>
-        </label>
+      <div class="search" role="search">
+        <input id="searchInput" placeholder="Search photos & videos (name, date, camera)" aria-label="Search"/>
+        <button id="clearBtn" class="icon" title="Clear">✕</button>
       </div>
-
-      <div class="controls" role="toolbar" aria-label="Controls">
-        <button id="refreshBtn" class="icon-btn" title="Refresh" aria-label="Refresh">⟳</button>
-        <button id="toggleViewBtn" class="icon-btn" title="Toggle view" aria-pressed="false">▦</button>
-        <button id="uploadBtn" class="icon-btn" title="Upload" aria-label="Upload">⬆</button>
-        <button id="backBtn" class="icon-btn" title="Back" aria-label="Back">←</button>
-      </div>
+      <button id="refreshBtn" class="icon" title="Refresh">⟳</button>
     </header>
 
-    <main class="main" role="main">
-      <aside class="left" id="leftPanel" aria-hidden="true">
-        <!-- reserved: folder tree, filters -->
-      </aside>
+    <div class="header-strip">
+      <button id="backBtn" class="back" aria-label="Back">◀ Back</button>
+      <div id="breadcrumb" style="font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">/</div>
+      <!-- Download current folder as zip -->
+      <button id="downloadAllBtn" class="icon" title="Download all">⤓</button>
+    </div>
 
-      <section class="center" aria-live="polite">
-        <div class="breadcrumb" id="breadcrumbContainer" aria-label="Breadcrumb"></div>
-
-        <div class="folders" id="foldersContainer" aria-label="Folders"></div>
-
-        <div class="toolbar">
-          <div class="left">
-            <div class="muted" id="resultCount">Loading…</div>
-          </div>
-          <div class="right" style="display:flex;gap:8px">
-            <button id="selectAllBtn" class="icon-btn" title="Select all">☑</button>
-            <button id="moreBtn" class="icon-btn" title="More">⋯</button>
-          </div>
+    <main class="container" id="container" role="main">
+      <!-- Folders (top) -->
+      <div id="foldersSection">
+        <div class="section-title">
+          <div>Folders</div>
         </div>
+        <div id="folderGrid" class="folder-grid" aria-live="polite"></div>
+      </div>
 
-        <div id="contentArea" class="content" aria-live="polite">
-          <div id="gridView" class="grid" role="list"></div>
-          <div id="listView" class="list" style="display:none" role="list"></div>
-        </div>
+      <!-- Files -->
+      <div class="section-title">
+        <div>Files</div>
+      </div>
+      <div id="grid" class="grid" role="list" aria-live="polite"></div>
 
-        <div class="load-more">
-          <button id="loadMoreBtn" class="icon-btn">Load more</button>
-        </div>
-      </section>
+      <div id="empty" class="empty" style="display:none">No files found — try a different search or open another directory.</div>
+      <div style="text-align:center;padding:12px"><button id="loadMore" class="icon">Load more</button></div>
     </main>
 
-    <!-- Modal viewer -->
-    <div id="modal" class="modal" role="dialog" aria-hidden="true" aria-label="Viewer" onclick="closeModal()">
+    <div class="bottom-bar">
+      <div id="resultCount" style="color:var(--muted);font-size:13px">—</div>
+      <div style="display:flex;gap:8px">
+        <button id="openSearchBtn" class="icon" title="Focus search">🔎</button>
+      </div>
+    </div>
+
+    <div id="modal" class="modal" aria-hidden="true" onclick="closeModal()">
       <div class="viewer" onclick="event.stopPropagation()">
         <div id="mediaArea"></div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
-          <button id="prevBtn" class="icon-btn" aria-label="Previous">←</button>
-          <button id="nextBtn" class="icon-btn" aria-label="Next">→</button>
-          <a id="downloadBtn" class="icon-btn" href="#" target="_blank" aria-label="Download">⤓</a>
-          <pre id="metaBox" class="muted" style="margin:0 0 0 8px;white-space:pre-wrap"></pre>
+
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;gap:8px">
+            <button id="prevBtn" class="icon">Prev</button>
+            <button id="nextBtn" class="icon">Next</button>
+          </div>
+
+          <div style="display:flex;gap:8px;align-items:center">
+            <!-- Single file download -->
+            <a id="downloadFileBtn" class="icon" href="#" target="_blank" rel="noopener noreferrer" title="Download">⤓</a>
+          </div>
         </div>
+
+        <pre id="viewerMeta" class="viewer-meta" style="color:#e8eefc;font-size:12px;white-space:pre-wrap"></pre>
       </div>
     </div>
   </div>
 
 <script>
-/* ====== Robust Drive UI (mobile + desktop) ====== */
+/* Mobile UI with Download buttons (single-file and folder-zip) */
 
-/* State */
-let items = [];               // displayed file items
-let currentIndex = 0;
+const PAGE_SIZE = 60;
 let currentPath = '/';
-let navStack = [];            // navigation history stack for Back
 let offset = 0;
-const pageSize = 60;
-let mode = 'grid';           // 'grid' or 'list'
+let items = [];
+let folders = [];
+let loading = false;
+let currentIndex = -1;
 
-/* DOM */
-const gridView = document.getElementById('gridView');
-const listView = document.getElementById('listView');
-const foldersContainer = document.getElementById('foldersContainer');
-const breadcrumbContainer = document.getElementById('breadcrumbContainer');
+/* DOM refs */
+const folderGrid = document.getElementById('folderGrid');
+const gridEl = document.getElementById('grid');
+const searchInput = document.getElementById('searchInput');
+const clearBtn = document.getElementById('clearBtn');
+const loadMoreBtn = document.getElementById('loadMore');
+const backBtn = document.getElementById('backBtn');
+const breadcrumbEl = document.getElementById('breadcrumb');
 const resultCount = document.getElementById('resultCount');
+const refreshBtn = document.getElementById('refreshBtn');
+const openSearchBtn = document.getElementById('openSearchBtn');
+const emptyEl = document.getElementById('empty');
+
+const downloadAllBtn = document.getElementById('downloadAllBtn');
+
+/* modal elements */
 const modal = document.getElementById('modal');
 const mediaArea = document.getElementById('mediaArea');
-const metaBox = document.getElementById('metaBox');
-const downloadBtn = document.getElementById('downloadBtn');
+const viewerMeta = document.getElementById('viewerMeta');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const downloadFileBtn = document.getElementById('downloadFileBtn');
 
-/* Controls */
-document.getElementById('searchBtn').addEventListener('click', ()=> search());
-document.getElementById('refreshBtn').addEventListener('click', ()=> navigateTo(currentPath));
-document.getElementById('toggleViewBtn').addEventListener('click', toggleView);
-document.getElementById('loadMoreBtn').addEventListener('click', loadMore);
-document.getElementById('searchInput').addEventListener('keyup', (e)=> { if(e.key==='Enter') search(); });
-document.getElementById('uploadBtn').addEventListener('click', ()=> { alert('Use phone app or implement file picker to upload'); });
-document.getElementById('backBtn').addEventListener('click', navigateBack);
-document.getElementById('prevBtn').addEventListener('click', prev);
-document.getElementById('nextBtn').addEventListener('click', next);
+let ioObserver = null;
 
-/* Keyboard support for desktop */
-document.addEventListener('keydown', (e)=>{
-  if(modal.classList.contains('show')){
-    if(e.key === 'ArrowLeft') prev();
-    if(e.key === 'ArrowRight') next();
-    if(e.key === 'Escape') closeModal();
-  }
-  if(e.key === 'f' && (e.ctrlKey || e.metaKey)){ // Ctrl/Cmd+F to focus search
-    e.preventDefault();
-    document.getElementById('searchInput').focus();
-  }
-});
-
-/* Helpers */
+/* helpers */
 function normalizePath(p){
   if(!p) return '/';
-  if(p === '/') return '/';
   if(!p.startsWith('/')) p = '/'+p;
   if(p.length>1 && p.endsWith('/')) p = p.slice(0,-1);
   return p;
 }
+function thumbUrl(path,w=360){ return `/api/thumbnail?path=${encodeURIComponent(path)}&w=${w}`; }
+function fileUrl(path){ return `/api/file?path=${encodeURIComponent(path)}`; }
+function zipUrl(path){ return `/api/download-zip?path=${encodeURIComponent(path)}`; }
+function singleDownloadUrl(path){ return `/api/download?path=${encodeURIComponent(path)}`; }
+function setCount(n){ resultCount.textContent = n + (n===1 ? ' item' : ' items'); }
+function esc(s){ return String(s||''); }
 
-function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, (c)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* debounce */
+function debounce(fn, wait=300){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), wait); }; }
 
-function normalizeItem(raw){
-  // support different API shapes
-  const name = raw.name || raw.filename || raw.title || (raw.path? raw.path.split('/').pop() : '');
-  const path = raw.path || raw.filepath || raw.file || ('/' + (raw.filepath || '').replace(/^\/+/, ''));
-  const mime = raw.mime || raw.mimetype || raw.type || '';
-  const modified = raw.modified || raw.uploadedAt || raw.uploaded_at || raw.modified_at || '';
-  const thumb = raw.thumb || ('/api/thumbnail?path=' + encodeURIComponent(path) + '&w=360');
-  return { raw, name, path, mime, modified, thumb };
+/* lazy loader */
+function ensureObserver(){
+  if(ioObserver) return;
+  ioObserver = new IntersectionObserver((entries)=>{
+    entries.forEach(en=>{
+      if(en.isIntersecting){
+        const img = en.target;
+        if(img.dataset && img.dataset.src){ img.src = img.dataset.src; delete img.dataset.src; }
+        ioObserver.unobserve(img);
+      }
+    });
+  }, {root: document.getElementById('container'), rootMargin: '300px'});
 }
 
-/* Breadcrumb + navigation */
-function buildBreadcrumb(p){
-  p = normalizePath(p);
-  breadcrumbContainer.innerHTML = '';
-  const parts = p.split('/').filter(Boolean);
-  const homeBtn = document.createElement('button');
-  homeBtn.className = 'crumb';
-  homeBtn.textContent = 'Home';
-  homeBtn.onclick = ()=> navigateTo('/');
-  breadcrumbContainer.appendChild(homeBtn);
+/* folder SVG data URI */
+const FOLDER_SVG_URI = "data:image/svg+xml;utf8," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="384" viewBox="0 0 24 18" fill="none">' +
+  '<rect width="24" height="18" rx="2" fill="%23eef3ff"/>' +
+  '<path d="M2 7h8l2 2h10v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z" fill="%23cfe7ff"/>' +
+  '<path d="M2 7h8l2-2h7a1 1 0 0 1 1 1v2H2z" fill="%23fff" opacity="0.9"/>' +
+  '</svg>'
+);
 
-  let acc = '';
-  parts.forEach(seg=>{
-    acc += '/'+seg;
-    const btn = document.createElement('button');
-    btn.className = 'crumb';
-    btn.textContent = seg;
-    btn.onclick = ()=> navigateTo(acc, true);
-    breadcrumbContainer.appendChild(btn);
-  });
+/* render folder tile (folder icon always) */
+function createFolderTile(folder){
+  const tile = document.createElement('div'); tile.className = 'folder-tile'; tile.tabIndex = 0;
+  const thumb = document.createElement('div'); thumb.className = 'folder-thumb';
+  const img = document.createElement('img');
+  img.alt = folder.name;
+  img.src = FOLDER_SVG_URI;
+  img.style.width = '60%';
+  img.style.height = '60%';
+  img.style.objectFit = 'contain';
+  img.style.borderRadius = '6px';
+  thumb.appendChild(img);
+
+  const name = document.createElement('div'); name.className = 'folder-name'; name.textContent = folder.name;
+  tile.appendChild(thumb); tile.appendChild(name);
+  tile.onclick = ()=> navigateTo(folder.path);
+  return tile;
 }
 
-function navigateTo(path, pushStack=true){
-  path = normalizePath(path);
-  if(pushStack && currentPath !== path) navStack.push(currentPath);
-  currentPath = path;
-  offset = 0;
-  items = [];
-  buildBreadcrumb(path);
-  loadPage(path, offset, pageSize, true);
+/* render file card */
+function createCard(item, idx){
+  const div = document.createElement('div'); div.className = 'card'; div.tabIndex = 0;
+  div.onclick = ()=> openViewer(idx);
+  const img = document.createElement('img'); img.className = 'thumb'; img.alt = item.name || '';
+  img.dataset.src = item.thumb || thumbUrl(item.path, 360);
+  img.loading = 'lazy';
+  const meta = document.createElement('div'); meta.className = 'meta';
+  meta.innerHTML = `<div class="name">${esc(item.name)}</div><div class="muted">${item.modified? new Date(item.modified).toLocaleString() : ''}</div>`;
+  div.appendChild(img); div.appendChild(meta);
+  return div;
 }
 
-function navigateBack(){
-  if(navStack.length > 0){
-    const prev = navStack.pop();
-    currentPath = prev;
-    offset = 0; items = [];
-    buildBreadcrumb(currentPath);
-    loadPage(currentPath, offset, pageSize, true);
-    return;
+/* load current path (folders + files) */
+async function loadPath(path, off=0, limit=PAGE_SIZE, replace=true){
+  if(loading) return;
+  loading = true;
+  if(replace){
+    gridEl.innerHTML = '';
+    folderGrid.innerHTML = '';
+    items = [];
+    folders = [];
   }
-  // fallback to parent
-  if(currentPath === '/') return;
-  const parts = currentPath.split('/').filter(Boolean); parts.pop();
-  const parent = parts.length ? '/'+parts.join('/') : '/';
-  currentPath = parent; offset = 0; items = [];
-  buildBreadcrumb(currentPath);
-  loadPage(currentPath, offset, pageSize, true);
-}
-
-/* Load page (grid view) */
-async function loadPage(p, off, lim, replace){
-  gridView.innerHTML = '<div class="muted">Loading…</div>';
-  listView.innerHTML = '';
-  foldersContainer.innerHTML = '';
-
   try{
-    const res = await fetch('/api/grid?path=' + encodeURIComponent(p) + '&offset=' + off + '&limit=' + lim);
-    if(!res.ok) throw new Error('grid fetch failed: ' + res.status);
-    const json = await res.json();
-    const all = json.items || [];
+    const res = await fetch(`/api/grid?path=${encodeURIComponent(path)}&offset=${off}&limit=${limit}`);
+    if(!res.ok) throw new Error('grid error');
+    const j = await res.json();
+    const all = j.items || [];
+    const folderItems = all.filter(it => it.type === 'dir');
+    const fileItems = all.filter(it => it.type === 'file');
 
-    // folders detection (support several shapes)
-    const folders = all.filter(i => {
-      const t = (i.type || i.kind || '').toString().toLowerCase();
-      return t === 'dir' || t === 'folder' || i.isDir === true || i.is_directory === true;
+    folderItems.forEach(f => {
+      folders.push(f);
+      const t = createFolderTile(f);
+      folderGrid.appendChild(t);
     });
 
-    const files = all.filter(i => {
-      const t = (i.type || i.kind || '').toString().toLowerCase();
-      return !(t === 'dir' || t === 'folder' || i.isDir === true || i.is_directory === true);
-    }).map(normalizeItem);
+    const startIndex = items.length;
+    fileItems.forEach((fi, i) => {
+      const idx = startIndex + i;
+      items.push(fi);
+      const c = createCard(fi, idx);
+      gridEl.appendChild(c);
+    });
 
-    renderFolders(folders);
-    if(replace) items = files; else items = items.concat(files);
-    renderGrid(items);
-    renderList(items);
-    resultCount.textContent = items.length + ' items';
-  }catch(err){
-    gridView.innerHTML = '<div class="muted">Error loading: '+escapeHtml(err.message)+'</div>';
-    console.error(err);
-  }
+    ensureObserver();
+    document.querySelectorAll('[data-src]').forEach(img => ioObserver.observe(img));
+    setCount(folderItems.length + items.length);
+    emptyEl.style.display = (folderItems.length + items.length === 0) ? 'block' : 'none';
+    loadMoreBtn.style.display = (fileItems.length < limit) ? 'none' : 'inline-block';
+  }catch(e){
+    console.error('loadPath', e);
+  } finally { loading = false; }
 }
 
-/* Renderers */
-function renderFolders(list){
-  foldersContainer.innerHTML = '';
-  if(!list || list.length===0) return;
-  list.forEach(f=>{
-    const name = f.name || f.filename || (f.path? f.path.split('/').pop() : 'folder');
-    const tile = document.createElement('div');
-    tile.className = 'folder-tile';
-    tile.tabIndex = 0;
-    tile.innerHTML = '<div style="font-weight:600">📁 '+escapeHtml(name)+'</div><div class="muted">'+(new Date(f.modified||f.uploadedAt||'').toLocaleDateString()||'')+'</div>';
-    tile.onclick = ()=> navigateTo(f.path || f.filepath || '/'+name);
-    foldersContainer.appendChild(tile);
-  });
-}
-
-function renderGrid(list){
-  gridView.innerHTML = '';
-  if(!list || list.length===0){ gridView.innerHTML = '<div class="muted">No files</div>'; return; }
-  list.forEach((it, idx)=>{
-    const c = document.createElement('div');
-    c.className = 'card';
-    c.tabIndex = 0;
-    c.onclick = ()=> openModal(idx);
-    const img = document.createElement('img');
-    img.className = 'thumb';
-    img.loading = 'lazy';
-    // retina srcset: request double-size thumbnail if devicePixelRatio>1
-    const w = (window.devicePixelRatio && window.devicePixelRatio > 1) ? 720 : 360;
-    img.src = it.thumb.replace(/w=\d+/,'w='+w) || ('/api/thumbnail?path='+encodeURIComponent(it.path)+'&w='+w);
-    img.onerror = function(){ this.src = '/api/file?path='+encodeURIComponent(it.path); };
-    img.alt = it.name || '';
-    const m = document.createElement('div'); m.className = 'meta';
-    m.innerHTML = '<div style="font-weight:600">'+escapeHtml(it.name||'')+'</div><div class="muted">'+(it.modified? new Date(it.modified).toLocaleString() : '')+'</div>';
-    c.appendChild(img); c.appendChild(m);
-    gridView.appendChild(c);
-  });
-}
-
-function renderList(list){
-  listView.innerHTML = '';
-  if(!list || list.length===0){ listView.innerHTML = '<div class="muted">No files</div>'; return; }
-  list.forEach((it, idx)=>{
-    const li = document.createElement('div');
-    li.className = 'list-item'; li.tabIndex = 0;
-    li.onclick = ()=> openModal(idx);
-    const img = document.createElement('img'); img.className = 'list-thumb';
-    const w = 480;
-    img.src = it.thumb.replace(/w=\d+/,'w='+w) || ('/api/thumbnail?path='+encodeURIComponent(it.path)+'&w='+w);
-    img.onerror = function(){ this.src = '/api/file?path='+encodeURIComponent(it.path); };
-    const meta = document.createElement('div');
-    meta.innerHTML = '<div style="font-weight:600">'+escapeHtml(it.name||'')+'</div><div class="muted">'+(it.modified? new Date(it.modified).toLocaleString() : '')+'</div>';
-    li.appendChild(img); li.appendChild(meta);
-    listView.appendChild(li);
-  });
-}
-
-/* Search */
-async function search(){
-  const q = document.getElementById('searchInput').value.trim();
-  const regex = document.getElementById('regexChk').checked ? '1' : '0';
-  if(q === '') { navigateTo('/'); return; }
-  offset = 0; items = [];
-  gridView.innerHTML = '<div class="muted">Searching…</div>'; listView.innerHTML = ''; foldersContainer.innerHTML = '';
+/* search (single box) */
+const doSearch = debounce(async function(q){
+  if(!q || q.trim() === ''){ navigateTo('/'); return; }
+  gridEl.innerHTML = ''; folderGrid.innerHTML = ''; items = []; folders = []; currentIndex = -1;
   try{
-    const res = await fetch('/api/search?query=' + encodeURIComponent(q) + '&limit=500&regex=' + regex);
-    if(!res.ok){
-      const t = await res.text();
-      gridView.innerHTML = '<div class="muted">Search error: '+escapeHtml(t)+'</div>';
-      return;
-    }
-    const json = await res.json();
-    const out = json.items || [];
-    items = out.map(normalizeItem);
-    renderGrid(items); renderList(items);
-    resultCount.textContent = items.length + ' results';
-  }catch(err){
-    gridView.innerHTML = '<div class="muted">Search failed</div>';
-    console.error(err);
-  }
+    const res = await fetch(`/api/search?query=${encodeURIComponent(q)}&limit=500`);
+    if(!res.ok){ gridEl.innerHTML = '<div class="empty">Search failed</div>'; return; }
+    const j = await res.json();
+    const out = j.items || [];
+    const folderItems = out.filter(it => it.type === 'dir');
+    const fileItems = out.filter(it => !(it.type === 'dir'));
+    folderItems.forEach(f => { const t = createFolderTile(f); folderGrid.appendChild(t); folders.push(f); });
+    fileItems.forEach((fi, idx) => { items.push(fi); gridEl.appendChild(createCard(fi, items.length-1)); });
+    ensureObserver();
+    document.querySelectorAll('[data-src]').forEach(img => ioObserver.observe(img));
+    setCount(fileItems.length + folderItems.length);
+    emptyEl.style.display = (fileItems.length + folderItems.length === 0) ? 'block' : 'none';
+    loadMoreBtn.style.display = 'none';
+  }catch(e){ console.error('search', e); }
+}, 350);
+
+/* navigation */
+function setBreadcrumb(p){ breadcrumbEl.textContent = p; }
+function navigateTo(p){
+  p = normalizePath(p);
+  currentPath = p; offset = 0; items = []; folders = []; gridEl.innerHTML = ''; folderGrid.innerHTML = '';
+  setBreadcrumb(currentPath);
+  history.pushState({path: currentPath}, '', '#'+encodeURIComponent(currentPath));
+  loadPath(currentPath, 0, PAGE_SIZE, true);
 }
 
-function loadMore(){ offset += pageSize; loadPage(currentPath, offset, pageSize, false); }
-
-/* Viewer modal */
-function openModal(idx){
-  currentIndex = idx; const it = items[idx]; if(!it) return;
+/* viewer */
+function openViewer(idx){
+  if(idx < 0 || idx >= items.length) return;
+  currentIndex = idx;
+  const it = items[idx];
   mediaArea.innerHTML = '';
-  const mime = it.mime || it.raw.mime || '';
+  const mime = it.mime || '';
   if(mime.startsWith('image/') || /\.(jpe?g|png|gif|webp|avif)$/i.test(it.name)){
-    const img = document.createElement('img'); img.src = '/api/file?path='+encodeURIComponent(it.path); mediaArea.appendChild(img);
+    const img = document.createElement('img'); img.src = fileUrl(it.path); mediaArea.appendChild(img);
+    prefetch(idx+1);
   } else if(mime.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(it.name)){
-    const v = document.createElement('video'); v.controls=true; v.autoplay=true; v.src='/api/file?path='+encodeURIComponent(it.path); mediaArea.appendChild(v);
+    const v = document.createElement('video'); v.controls=true; v.autoplay=true; v.src = fileUrl(it.path); mediaArea.appendChild(v);
+    prefetch(idx+1);
   } else {
-    const a = document.createElement('a'); a.href='/api/file?path='+encodeURIComponent(it.path); a.textContent='Download'; a.target='_blank'; mediaArea.appendChild(a);
+    const a = document.createElement('a'); a.href = fileUrl(it.path); a.textContent = 'Download'; a.target='_blank'; mediaArea.appendChild(a);
   }
-  downloadBtn.href = '/api/file?path='+encodeURIComponent(it.path);
-  fetch('/api/metadata?path='+encodeURIComponent(it.path)).then(r=>r.ok? r.json() : {}).then(m=>{
-    metaBox.textContent = m ? JSON.stringify(m, null, 2) : '';
-  }).catch(()=>metaBox.textContent='');
+  // Set download link for single file (server will set Content-Disposition)
+  downloadFileBtn.href = singleDownloadUrl(it.path);
+  // download attribute as hint
+  try {
+    const filename = it.name || it.path.split('/').pop();
+    downloadFileBtn.setAttribute('download', filename);
+  } catch(e){}
+  viewerMeta.textContent = 'Loading metadata...';
+  fetch(`/api/metadata?path=${encodeURIComponent(it.path)}`).then(r=>r.ok? r.json() : {}).then(m=>{
+    viewerMeta.textContent = m ? JSON.stringify(m, null, 2) : '';
+  }).catch(()=>viewerMeta.textContent='');
   modal.classList.add('show'); modal.setAttribute('aria-hidden','false');
 }
-
 function closeModal(){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); }
-function prev(){ if(items.length===0) return; currentIndex = (currentIndex - 1 + items.length) % items.length; openModal(currentIndex); }
-function next(){ if(items.length===0) return; currentIndex = (currentIndex + 1) % items.length; openModal(currentIndex); }
+function prefetch(i){ if(i<0||i>=items.length) return; const a=document.createElement('link'); a.rel='prefetch'; a.href=fileUrl(items[i].path); document.head.appendChild(a); }
 
-/* view toggle */
-function toggleView(){
-  mode = (mode === 'grid') ? 'list' : 'grid';
-  document.getElementById('toggleViewBtn').textContent = (mode === 'grid') ? '▦' : '☰';
-  gridView.style.display = (mode === 'grid') ? 'grid' : 'none';
-  listView.style.display = (mode === 'list') ? 'block' : 'none';
-}
+/* events */
+searchInput.addEventListener('input', (e)=> doSearch(e.target.value));
+clearBtn.addEventListener('click', ()=> { searchInput.value=''; navigateTo('/'); });
+loadMoreBtn.addEventListener('click', ()=> { offset += PAGE_SIZE; loadPath(currentPath, offset, PAGE_SIZE, false); });
+backBtn.addEventListener('click', ()=> {
+  if(currentPath === '/') return;
+  const parts = currentPath.split('/').filter(Boolean);
+  parts.pop();
+  const parent = parts.length ? '/'+parts.join('/') : '/';
+  navigateTo(parent);
+});
+refreshBtn.addEventListener('click', ()=> navigateTo(currentPath));
+openSearchBtn.addEventListener('click', ()=> searchInput.focus());
+prevBtn.addEventListener('click', ()=> { if(currentIndex>0) openViewer(currentIndex-1); });
+nextBtn.addEventListener('click', ()=> { if(currentIndex < items.length-1) openViewer(currentIndex+1); });
+
+downloadAllBtn.addEventListener('click', ()=>{
+  // open zip stream in new tab/window so browser handles the download
+  const u = zipUrl(currentPath || '/');
+  window.open(u, '_blank');
+});
+
+window.addEventListener('popstate', (e)=> { if(e.state && e.state.path) navigateTo(e.state.path); });
+
+document.addEventListener('keydown', (e)=> { if(e.key === 'Escape') closeModal(); if(e.key==='ArrowLeft' && currentIndex>0) openViewer(currentIndex-1); if(e.key==='ArrowRight' && currentIndex<items.length-1) openViewer(currentIndex+1); });
 
 /* init */
-navigateTo('/');
-toggleView(); // set initial view (grid by default)
-
-/* small UX: long-press on mobile to show file meta (optional) */
-let longPressTimer = null;
-document.addEventListener('touchstart', (ev)=>{
-  const t = ev.target.closest('.card, .list-item');
-  if(!t) return;
-  longPressTimer = setTimeout(()=> {
-    const idx = Array.from(document.querySelectorAll('.card, .list-item')).indexOf(t);
-    if(idx >= 0) {
-      fetch('/api/metadata?path='+encodeURIComponent(items[idx].path)).then(r=>r.ok? r.json() : {}).then(m=>{
-        alert(JSON.stringify(m, null, 2));
-      }).catch(()=>{});
-    }
-  }, 700);
-});
-document.addEventListener('touchend', ()=> { if(longPressTimer) clearTimeout(longPressTimer); });
-
+(function init(){ navigateTo('/'); ensureObserver(); })();
 </script>
 </body>
 </html>
