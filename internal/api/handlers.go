@@ -36,6 +36,40 @@ var (
 
 // ---------------------- helpers ----------------------
 
+// shouldIgnoreFile returns true for files/folders that should be hidden/ignored
+func shouldIgnoreFile(name string) bool {
+	if name == "" {
+		return true
+	}
+	lower := strings.ToLower(name)
+
+	// ignore dotfiles and macOS metadata
+	if strings.HasPrefix(name, ".") {
+		return true
+	}
+	if lower == ".ds_store" || strings.HasPrefix(lower, "._") ||
+		strings.Contains(lower, "spotlight") || strings.Contains(lower, "fseventsd") {
+		return true
+	}
+
+	// windows metadata
+	if lower == "thumbs.db" || strings.HasPrefix(lower, "desktop.ini") {
+		return true
+	}
+
+	// linux/system
+	if lower == "lost+found" || strings.HasPrefix(lower, ".trash") {
+		return true
+	}
+
+	// temp/cache patterns
+	if strings.Contains(lower, "cache") || strings.HasSuffix(lower, "~") {
+		return true
+	}
+
+	return false
+}
+
 func absClean(root, rel string) (string, error) {
 	rel = strings.TrimPrefix(rel, "/")
 	abs := filepath.Join(root, rel)
@@ -82,8 +116,6 @@ func generateImageThumbnail(abs, dst string, maxDim int) error {
 
 func generateVideoThumbnailFFmpeg(abs, dst string, maxDim int) error {
 	// Use ffmpeg to extract a frame (requires ffmpeg installed)
-	// -ss 2 -> seek 2s
-	// output to stdout image and decode
 	cmd := exec.Command("ffmpeg", "-ss", "2", "-i", abs, "-vframes", "1", "-vf", fmt.Sprintf("scale='min(%d,iw)':'min(%d,ih)'", maxDim, maxDim), "-f", "image2", "pipe:1")
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -133,6 +165,10 @@ func StartThumbnailWorker(concurrency int) {
 		go func() {
 			defer wg.Done()
 			for p := range thumbnailQueue {
+				// skip hidden files just in case
+				if shouldIgnoreFile(filepath.Base(p)) {
+					continue
+				}
 				dst := thumbPathFor(p)
 				if err := generateThumbnail(p, dst, 480); err != nil {
 					log.Println("thumb generate err:", err)
@@ -144,6 +180,10 @@ func StartThumbnailWorker(concurrency int) {
 
 func EnqueueThumbnail(abs string) {
 	if thumbnailQueue == nil {
+		return
+	}
+	// skip hidden files
+	if shouldIgnoreFile(filepath.Base(abs)) {
 		return
 	}
 	select {
@@ -168,6 +208,14 @@ func UploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+
+	// ignore hidden/system files from upload
+	if shouldIgnoreFile(header.Filename) {
+		// Respond with skipped status so client knows we didn't store it
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"skipped": true, "reason": "ignored file"})
+		return
+	}
 
 	savedPath, err := storage.SaveFile(DataDir, header.Filename, file)
 	if err != nil {
@@ -213,6 +261,10 @@ func ListHandler(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&id, &name, &pathStr, &uploaded); err != nil {
 			continue
 		}
+		// skip hidden/system files stored in DB
+		if shouldIgnoreFile(name) || strings.Contains(strings.ToLower(pathStr), "/.ds_store") {
+			continue
+		}
 		results = append(results, map[string]interface{}{
 			"id":         id,
 			"filename":   name,
@@ -230,6 +282,11 @@ func DeleteHandler(w http.ResponseWriter, r *http.Request) {
 	filename := vars["filename"]
 	if filename == "" {
 		http.Error(w, "filename required", http.StatusBadRequest)
+		return
+	}
+	// protect against deleting hidden file by mistake
+	if shouldIgnoreFile(filename) {
+		http.Error(w, "refusing to delete hidden/system file", http.StatusBadRequest)
 		return
 	}
 	if err := storage.DeleteFile(DataDir, filename); err != nil {
@@ -254,8 +311,7 @@ func pathVarsFromRequest(r *http.Request) map[string]string {
 	return vars
 }
 func muxVars(r *http.Request) map[string]string {
-	// import here to avoid package cycle at top — but we used mux in main; easiest is:
-	// Actually use github.com/gorilla/mux directly:
+	// use github.com/gorilla/mux vars
 	return mux.Vars(r)
 }
 
@@ -291,6 +347,11 @@ func TreeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	items := []TreeItem{}
 	for _, e := range entries {
+		// skip hidden/system files
+		if shouldIgnoreFile(e.Name()) {
+			continue
+		}
+
 		info, err := e.Info()
 		if err != nil {
 			continue
@@ -324,6 +385,11 @@ func FileHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("path")
 	if q == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+	// don't serve hidden files
+	if shouldIgnoreFile(filepath.Base(q)) {
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 	abs, err := absClean(DataDir, q)
@@ -437,6 +503,11 @@ func ThumbnailHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "path required", http.StatusBadRequest)
 		return
 	}
+	// don't serve thumbnails for hidden files
+	if shouldIgnoreFile(filepath.Base(q)) {
+		http.Error(w, "no thumbnail", http.StatusNotFound)
+		return
+	}
 	wStr := r.URL.Query().Get("w")
 	width := 320
 	if wStr != "" {
@@ -471,6 +542,11 @@ func MetadataHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("path")
 	if q == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+	// don't expose metadata for hidden files
+	if shouldIgnoreFile(filepath.Base(q)) {
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 	abs, err := absClean(DataDir, q)
@@ -543,10 +619,18 @@ func GridHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "read dir: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// build visible entries (skip hidden/system) then apply offset/limit
+	visible := []os.DirEntry{}
+	for _, e := range entries {
+		if shouldIgnoreFile(e.Name()) {
+			continue
+		}
+		visible = append(visible, e)
+	}
 	items := []map[string]interface{}{}
-	total := len(entries)
+	total := len(visible)
 	for i := offset; i < total && len(items) < limit; i++ {
-		e := entries[i]
+		e := visible[i]
 		info, _ := e.Info()
 		relPath, _ := filepath.Rel(DataDir, filepath.Join(abs, e.Name()))
 		apiPath := "/" + filepath.ToSlash(relPath)
