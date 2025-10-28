@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>LocalCloud Gallery</title>
+<style>
+  body{font-family:system-ui; margin:0;background:#fafafa}
+  .top{padding:10px 12px;background:#111;color:#fff;display:flex;align-items:center;gap:12px}
+  .brand{font-weight:700}
+  .controls{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .btn{background:#fff;color:#111;padding:6px 10px;border-radius:6px;text-decoration:none;border:0;cursor:pointer}
+  .pathbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .crumb{color:#d1d5db;background:transparent;border:0;padding:6px 8px;border-radius:6px;cursor:pointer}
+  .crumb.current{background:#374151;color:#fff}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;padding:12px}
+  .card{background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);cursor:pointer;display:flex;flex-direction:column}
+  .thumb{width:100%;height:140px;object-fit:cover;background:#eee}
+  .meta{padding:8px;font-size:13px;color:#111}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;visibility:hidden;opacity:0;transition:opacity .18s}
+  .modal.show{visibility:visible;opacity:1}
+  .viewer{background:#000;max-width:90vw;max-height:90vh;padding:8px;border-radius:6px;display:flex;flex-direction:column;align-items:center}
+  .viewer img, .viewer video{max-width:100%;max-height:80vh}
+  .controls-bottom{color:#fff;margin-top:8px;display:flex;gap:8px;align-items:center}
+  .info{color:#ddd;margin-left:12px;font-size:13px;white-space:pre-wrap}
+  .muted{color:#6b7280;font-size:12px}
+  .left-col{display:none} /* keep UI simple for gallery-only view; left folder list omitted */
+  @media(min-width:1100px){
+    .left-col{display:block;width:280px;padding:12px;border-right:1px solid #e6e6e6}
+    .container{display:flex}
+    .grid{padding:12px;flex:1}
+  }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand">LocalCloud Gallery</div>
+
+    <div style="margin-left:12px" id="breadcrumb" class="pathbar">
+      <!-- Breadcrumb buttons injected here -->
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="backBtn">Back</button>
+      <button class="btn" id="refreshBtn">Refresh</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="left-col" id="foldersCol">
+      <h4 style="margin:0 0 8px 0">Folders</h4>
+      <div id="foldersList" class="muted">Loading...</div>
+    </div>
+
+    <div style="flex:1">
+      <div id="grid" class="grid"></div>
+    </div>
+  </div>
+
+  <div id="modal" class="modal" onclick="closeModal()">
+    <div class="viewer" onclick="event.stopPropagation()">
+      <div id="mediaArea"></div>
+      <div class="controls-bottom">
+        <button class="btn" onclick="prev()">Prev</button>
+        <button class="btn" onclick="next()">Next</button>
+        <a id="downloadBtn" class="btn" href="#" target="_blank">Download</a>
+        <div id="metaBox" class="info"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/**
+ * Gallery UI with breadcrumb navigation.
+ * Works with:
+ *  - GET /api/grid?path=...      -> returns { items: [...] }
+ *  - GET /api/file?path=...      -> streams file
+ *  - GET /api/thumbnail?path=...  -> thumbnail
+ *  - GET /api/metadata?path=...   -> metadata
+ */
+
+let items = [];
+let currentIndex = 0;
+let currentPath = '/';
+
+const gridEl = document.getElementById('grid');
+const breadcrumbEl = document.getElementById('breadcrumb');
+const foldersListEl = document.getElementById('foldersList');
+
+document.getElementById('backBtn').addEventListener('click', goUp);
+document.getElementById('refreshBtn').addEventListener('click', () => load(currentPath, 0));
+
+function normalizePath(p){
+  if(!p) return '/';
+  if(p === '/') return '/';
+  if(!p.startsWith('/')) p = '/' + p;
+  // remove trailing slash except root
+  if(p.length > 1 && p.endsWith('/')) p = p.slice(0,-1);
+  return p;
+}
+
+function buildBreadcrumb(p){
+  p = normalizePath(p);
+  breadcrumbEl.innerHTML = '';
+  const parts = p.split('/').filter(Boolean);
+  // home root crumb
+  const rootBtn = document.createElement('button');
+  rootBtn.className = 'crumb' + (p === '/' ? ' current' : '');
+  rootBtn.textContent = 'Home';
+  rootBtn.onclick = ()=> navigateTo('/');
+  breadcrumbEl.appendChild(rootBtn);
+
+  let acc = '';
+  parts.forEach((seg, idx) => {
+    acc += '/' + seg;
+    const btn = document.createElement('button');
+    btn.className = 'crumb' + (idx === parts.length-1 ? ' current' : '');
+    btn.textContent = seg;
+    btn.onclick = ()=> navigateTo(acc);
+    breadcrumbEl.appendChild(btn);
+  });
+}
+
+function navigateTo(p){
+  p = normalizePath(p);
+  currentPath = p;
+  buildBreadcrumb(p);
+  load(p, 0);
+}
+
+function goUp(){
+  if(currentPath === '/' ) return;
+  const parts = currentPath.split('/').filter(Boolean);
+  parts.pop();
+  const np = parts.length ? '/' + parts.join('/') : '/';
+  navigateTo(np);
+}
+
+async function load(path='/', offset=0, limit=80){
+  path = normalizePath(path);
+  currentPath = path;
+  buildBreadcrumb(path);
+  gridEl.innerHTML = '<div class="muted">Loading…</div>';
+  foldersListEl.textContent = 'Loading...';
+
+  try{
+    const res = await fetch('/api/grid?path=' + encodeURIComponent(path) + '&offset=' + offset + '&limit=' + limit);
+    if(!res.ok) throw new Error('grid fetch error: ' + res.status);
+    const json = await res.json();
+    const all = json.items || [];
+    // show folders in left column
+    const folders = all.filter(i => i.type === 'dir');
+    renderFolders(folders);
+    // show files grid
+    const files = all.filter(i => i.type === 'file').sort((a,b)=> new Date(b.modified) - new Date(a.modified));
+    renderGrid(files);
+  }catch(err){
+    gridEl.innerHTML = '<div class="muted">Error loading: '+err.message+'</div>';
+    foldersListEl.textContent = 'Error';
+    console.error(err);
+  }
+}
+
+function renderFolders(folders){
+  if(!folders || folders.length === 0){
+    foldersListEl.textContent = 'No folders';
+    return;
+  }
+  foldersListEl.innerHTML = '';
+  folders.forEach(f => {
+    const btn = document.createElement('button');
+    btn.className = 'crumb';
+    btn.style.display = 'block';
+    btn.style.marginBottom = '6px';
+    btn.textContent = '📁 ' + f.name;
+    btn.onclick = ()=> navigateTo(f.path);
+    foldersListEl.appendChild(btn);
+  });
+}
+
+function renderGrid(files){
+  items = files;
+  if(items.length === 0){
+    gridEl.innerHTML = '<div class="muted">No files in this folder</div>';
+    return;
+  }
+  gridEl.innerHTML = '';
+  items.forEach((it, idx) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.onclick = ()=> openModal(idx);
+
+    const img = document.createElement('img');
+    img.className = 'thumb';
+    img.loading = 'lazy';
+    // use thumbnail endpoint; fallback to file if thumb 404
+    img.src = '/api/thumbnail?path=' + encodeURIComponent(it.path) + '&w=360';
+    img.onerror = function(){ this.src = '/api/file?path=' + encodeURIComponent(it.path); };
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML = '<div style="font-weight:600">'+(it.name||'')+'</div><div class="muted">'+(new Date(it.modified)).toLocaleString()+'</div>';
+
+    card.appendChild(img);
+    card.appendChild(meta);
+    gridEl.appendChild(card);
+  });
+}
+
+/* Lightbox/modal */
+const modal = document.getElementById('modal');
+const mediaArea = document.getElementById('mediaArea');
+const metaBox = document.getElementById('metaBox');
+const downloadBtn = document.getElementById('downloadBtn');
+
+function openModal(index){
+  currentIndex = index;
+  const it = items[index];
+  if(!it) return;
+  mediaArea.innerHTML = '';
+  if(it.mime && it.mime.startsWith('image/')){
+    const img = document.createElement('img');
+    img.src = '/api/file?path=' + encodeURIComponent(it.path);
+    mediaArea.appendChild(img);
+  } else if(it.mime && it.mime.startsWith('video/')){
+    const v = document.createElement('video');
+    v.controls = true;
+    v.src = '/api/file?path=' + encodeURIComponent(it.path);
+    v.autoplay = true;
+    mediaArea.appendChild(v);
+  } else if(it.mime && it.mime.startsWith('audio/')){
+    const a = document.createElement('audio');
+    a.controls = true;
+    a.src = '/api/file?path=' + encodeURIComponent(it.path);
+    mediaArea.appendChild(a);
+  } else {
+    const a = document.createElement('a');
+    a.href = '/api/file?path=' + encodeURIComponent(it.path);
+    a.textContent = 'Download';
+    a.target = '_blank';
+    mediaArea.appendChild(a);
+  }
+
+  downloadBtn.href = '/api/file?path=' + encodeURIComponent(it.path);
+  fetch('/api/metadata?path=' + encodeURIComponent(it.path)).then(r=>r.ok? r.json() : {}).then(m=>{
+    metaBox.textContent = m ? JSON.stringify(m, null, 2) : '';
+  }).catch(()=>metaBox.textContent = '');
+
+  modal.classList.add('show');
+}
+
+function closeModal(){ modal.classList.remove('show'); }
+
+function prev(){ currentIndex = (currentIndex - 1 + items.length) % items.length; openModal(currentIndex); }
+function next(){ currentIndex = (currentIndex + 1) % items.length; openModal(currentIndex); }
+
+document.addEventListener('keydown', function(e){
+  if(!modal.classList.contains('show')) return;
+  if(e.key === 'ArrowLeft') prev();
+  if(e.key === 'ArrowRight') next();
+  if(e.key === 'Escape') closeModal();
+});
+
+// initialize
+navigateTo('/');
+</script>
+</body>
+</html>
