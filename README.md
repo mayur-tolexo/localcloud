@@ -1,6 +1,7 @@
-# 📦 LocalCloud — Self-Hosted Personal Cloud (Drive-like UI)
+# SmartHome AI Media Hub 
 
-LocalCloud is a lightweight self-hosted cloud system that lets you **browse, upload, search, and preview** files and images — all stored locally on your laptop, accessible anywhere securely.
+## Overview 
+SmartHome AI Media Hub is a **local-first personal cloud** that stores photos and videos securely on a Raspberry Pi (or any Linux device) using an external SSD. It provides **DLNA streaming**, **semantic AI search**, and **Wi-Fi/Bluetooth hybrid connectivity** for Smart TVs and mobile devices — all while keeping your data private and local.
 
 ---
 
