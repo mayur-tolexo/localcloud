@@ -84,15 +84,7 @@ This starts the backend and serves UI at
 
 ---
 
-### 2. Create an Admin User
-
-On first run, you’ll be prompted to create a username and password for login.
-
-Credentials are stored securely (hashed) in SQLite DB under `~/.localcloud/localcloud.db`.
-
----
-
-### 3. 📱 Enable Remote Access (ngrok)
+### 2. 📱 Enable Remote Access (ngrok)
 
 Install **ngrok** (free account required):
 
